@@ -17,6 +17,7 @@ interface UseChatReturn {
   isStreaming: boolean;
   isLoadingHistory: boolean;
   isWatching: boolean;
+  isNewSession: boolean;
   model: string | null;
   selectedModel: string;
   selectedMode: AgentMode;
@@ -29,6 +30,7 @@ interface UseChatReturn {
   clearChat: () => void;
   stopStreaming: () => void;
   retryLastMessage: () => void;
+  dismissNewSessionHint: () => void;
 }
 
 function extractAssistantText(message: Record<string, unknown>): string {
@@ -194,6 +196,7 @@ export function useChat(): UseChatReturn {
   const [selectedMode, setSelectedMode] = useState<AgentMode>("agent");
   const [error, setError] = useState<string | null>(null);
   const [isWatching, setIsWatching] = useState(false);
+  const [isNewSession, setIsNewSession] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastModifiedRef = useRef<number>(0);
@@ -248,6 +251,7 @@ export function useChat(): UseChatReturn {
     setSessionId(null);
     setModel(null);
     setError(null);
+    setIsNewSession(false);
   }, [stopPolling]);
 
   const stopStreaming = useCallback(() => {
@@ -357,6 +361,11 @@ export function useChat(): UseChatReturn {
               continue;
             }
 
+            if (parsed.type === "meta" && parsed.isNewSession) {
+              setIsNewSession(true);
+              continue;
+            }
+
             const event = parsed as unknown as StreamEvent;
 
             try {
@@ -456,6 +465,10 @@ export function useChat(): UseChatReturn {
     [isStreaming, sessionId, selectedModel, selectedMode, stopPolling]
   );
 
+  const dismissNewSessionHint = useCallback(() => {
+    setIsNewSession(false);
+  }, []);
+
   const retryLastMessage = useCallback(() => {
     if (isStreaming) return;
     const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
@@ -476,6 +489,7 @@ export function useChat(): UseChatReturn {
     isStreaming,
     isLoadingHistory,
     isWatching,
+    isNewSession,
     model,
     selectedModel,
     selectedMode,
@@ -488,5 +502,6 @@ export function useChat(): UseChatReturn {
     clearChat,
     stopStreaming,
     retryLastMessage,
+    dismissNewSessionHint,
   };
 }

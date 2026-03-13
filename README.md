@@ -71,7 +71,7 @@ The Next.js app runs on your machine at `0.0.0.0:3100`. It spawns `agent` proces
 
 ## Limitations
 
-Sessions started from the remote UI won't appear in Cursor's desktop sidebar. This is a limitation of the Cursor CLI, it doesn't register headless sessions in the IDE's internal state. The sessions still work and are fully accessible from the remote's own session browser.
+Sessions started from the remote UI are synced to Cursor's internal state, but the IDE won't pick them up until you reload the window (`Cmd+Shift+P` -> `Developer: Reload Window`). A hint banner appears in the remote UI when a new session is created.
 
 The best workflow is to **start a session in Cursor on your desktop**, then continue or monitor it from your phone via the remote UI. Sessions started from either side can be resumed from either side.
 
