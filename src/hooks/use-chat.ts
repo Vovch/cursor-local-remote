@@ -4,9 +4,6 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import type {
   ChatMessage,
   ToolCallInfo,
-  TodoItem,
-  StreamEvent,
-  ChatRequest,
   AgentMode,
   QueuedMessage,
 } from "@/lib/types";
@@ -62,244 +59,6 @@ async function fetchActiveSessions(): Promise<string[]> {
 
 export { fetchActiveSessions };
 
-function extractAssistantText(message: Record<string, unknown>): string {
-  const content = message.content;
-
-  if (typeof content === "string") return content;
-
-  if (Array.isArray(content)) {
-    return content
-      .map((c: Record<string, unknown>) => {
-        if (typeof c === "string") return c;
-        if (c && typeof c.text === "string") return c.text;
-        return "";
-      })
-      .join("");
-  }
-
-  return String(content ?? "");
-}
-
-function parseJsonSafe(str: string): Record<string, unknown> | null {
-  try {
-    return JSON.parse(str);
-  } catch {
-    return null;
-  }
-}
-
-type ToolExtractor = (
-  toolCall: Record<string, unknown>,
-  status: "running" | "completed",
-) => Partial<ToolCallInfo> | null;
-
-function findDiffStartLine(diffStr: string, beforeContent: string): number | undefined {
-  const firstContext = diffStr
-    .split("\n")
-    .find((l) => l.length > 0 && !l.startsWith("+") && !l.startsWith("-"));
-  if (!firstContext) return undefined;
-  const search = firstContext.startsWith(" ") ? firstContext.slice(1) : firstContext;
-  const idx = beforeContent.split("\n").indexOf(search);
-  return idx >= 0 ? idx + 1 : undefined;
-}
-
-function extractEditCall(
-  tc: Record<string, unknown>,
-  status: "running" | "completed",
-): Partial<ToolCallInfo> {
-  const args = tc.args as Record<string, string>;
-  const success = (tc.result as Record<string, Record<string, unknown>> | undefined)?.success;
-  let diffStartLine: number | undefined;
-  const diffStr = success?.diffString ? String(success.diffString) : undefined;
-  if (diffStr && success?.beforeFullFileContent) {
-    diffStartLine = findDiffStartLine(diffStr, String(success.beforeFullFileContent));
-  }
-  return {
-    type: "edit",
-    name: "Edit",
-    path: args?.path,
-    status,
-    diff: status === "completed" ? diffStr : undefined,
-    diffStartLine,
-    result:
-      status === "completed" && success
-        ? `+${success.linesAdded ?? 0} -${success.linesRemoved ?? 0}`
-        : undefined,
-  };
-}
-
-const TOOL_EXTRACTORS: Record<string, ToolExtractor> = {
-  readToolCall: (toolCall, status) => {
-    const tc = toolCall.readToolCall as Record<string, unknown>;
-    const args = tc.args as Record<string, string>;
-    const result = tc.result as Record<string, Record<string, unknown>> | undefined;
-    return {
-      type: "read",
-      name: "Read",
-      path: args.path,
-      status,
-      result:
-        status === "completed" && result?.success
-          ? `${result.success.totalLines} lines`
-          : undefined,
-    };
-  },
-  writeToolCall: (toolCall, status) => {
-    const tc = toolCall.writeToolCall as Record<string, unknown>;
-    const args = tc.args as Record<string, string>;
-    const result = tc.result as Record<string, Record<string, unknown>> | undefined;
-    return {
-      type: "write",
-      name: "Write",
-      path: args.path,
-      status,
-      result:
-        status === "completed" && result?.success
-          ? `${result.success.linesCreated} lines`
-          : undefined,
-    };
-  },
-  shellToolCall: (toolCall, status) => {
-    const tc = toolCall.shellToolCall as Record<string, unknown>;
-    const args = tc.args as Record<string, string>;
-    return { type: "shell", name: "Shell", command: args?.command, status };
-  },
-  strReplaceToolCall: (toolCall, status) =>
-    extractEditCall(toolCall.strReplaceToolCall as Record<string, unknown>, status),
-  editToolCall: (toolCall, status) =>
-    extractEditCall(toolCall.editToolCall as Record<string, unknown>, status),
-  grepToolCall: (toolCall, status) => {
-    const tc = toolCall.grepToolCall as Record<string, unknown>;
-    const args = tc.args as Record<string, string>;
-    return { type: "search", name: "Grep", path: args?.path, command: args?.pattern, status };
-  },
-  globToolCall: (toolCall, status) => {
-    const tc = toolCall.globToolCall as Record<string, unknown>;
-    const args = tc.args as Record<string, string>;
-    return {
-      type: "search",
-      name: "Glob",
-      command: args?.globPattern || args?.glob_pattern,
-      status,
-    };
-  },
-  listToolCall: (toolCall, status) => {
-    const tc = toolCall.listToolCall as Record<string, unknown>;
-    const args = tc.args as Record<string, string>;
-    return { type: "read", name: "List", path: args?.path, status };
-  },
-  updateTodosToolCall: (toolCall, status) => {
-    const tc = toolCall.updateTodosToolCall as Record<string, unknown>;
-    const raw = (tc.result as Record<string, unknown>)?.success as
-      | Record<string, unknown>
-      | undefined;
-    const source = raw?.todos ?? (tc.args as Record<string, unknown>)?.todos;
-    const items = Array.isArray(source)
-      ? (source as Record<string, string>[]).map(
-          (t): TodoItem => ({
-            id: t.id,
-            content: t.content,
-            status: t.status,
-          }),
-        )
-      : undefined;
-    const done = items?.filter((t) => t.status.includes("COMPLETED")).length ?? 0;
-    const total = items?.length ?? 0;
-    return {
-      type: "todo" as const,
-      name: "Todo",
-      status,
-      todos: items,
-      result: total > 0 ? `${total} items · ${done} done` : undefined,
-    };
-  },
-};
-
-const FN_NAME_MATCHERS: Array<{
-  test: (n: string) => boolean;
-  extract: (fnName: string, fnArgs: Record<string, unknown> | null) => Partial<ToolCallInfo>;
-}> = [
-  {
-    test: (n) => n.includes("bash") || n.includes("shell") || n.includes("execute"),
-    extract: (_n, a) => ({
-      type: "shell",
-      name: "Shell",
-      command: a?.command as string | undefined,
-    }),
-  },
-  {
-    test: (n) => n.includes("edit") || n.includes("replace"),
-    extract: (_n, a) => ({
-      type: "edit",
-      name: "Edit",
-      path: (a?.path || a?.file_path) as string | undefined,
-    }),
-  },
-  {
-    test: (n) => n.includes("grep") || n.includes("search") || n.includes("glob"),
-    extract: (n, a) => ({
-      type: "search",
-      name: n,
-      command: (a?.pattern || a?.query) as string | undefined,
-    }),
-  },
-  {
-    test: (n) => n.includes("read"),
-    extract: (_n, a) => ({
-      type: "read",
-      name: "Read",
-      path: (a?.path || a?.file_path) as string | undefined,
-    }),
-  },
-  {
-    test: (n) => n.includes("write") || n.includes("create"),
-    extract: (_n, a) => ({
-      type: "write",
-      name: "Write",
-      path: (a?.path || a?.file_path) as string | undefined,
-    }),
-  },
-];
-
-function extractToolCallInfo(
-  toolCall: Record<string, unknown>,
-  callId: string,
-  status: "running" | "completed",
-): Partial<ToolCallInfo> {
-  for (const key of Object.keys(toolCall)) {
-    const extractor = TOOL_EXTRACTORS[key];
-    if (extractor) {
-      const result = extractor(toolCall, status);
-      if (result) return result;
-    }
-  }
-
-  if ("function" in toolCall) {
-    const fn = toolCall.function as Record<string, string>;
-    const fnName = fn.name || "Tool";
-    const fnArgs = fn.arguments ? parseJsonSafe(fn.arguments) : null;
-    const nameLower = fnName.toLowerCase();
-    const match = FN_NAME_MATCHERS.find((m) => m.test(nameLower));
-    if (match) return { ...match.extract(fnName, fnArgs), status };
-    return { type: "other", name: fnName, args: fn.arguments, status };
-  }
-
-  const keys = Object.keys(toolCall).filter((k) => k !== "result");
-  const toolKey = keys.find((k) => k.endsWith("ToolCall") || k.endsWith("Call"));
-  if (toolKey) {
-    const readable = toolKey
-      .replace(/ToolCall$/, "")
-      .replace(/Call$/, "")
-      .replace(/([a-z])([A-Z])/g, "$1 $2");
-    const name = readable.charAt(0).toUpperCase() + readable.slice(1);
-    const tc = toolCall[toolKey] as Record<string, unknown>;
-    const args = tc?.args as Record<string, string> | undefined;
-    return { type: "other", name, path: args?.path || args?.file_path, status };
-  }
-
-  return { type: "other", name: "Tool", status };
-}
-
 export function useChat(): UseChatReturn {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [toolCalls, setToolCalls] = useState<ToolCallInfo[]>([]);
@@ -313,7 +72,6 @@ export function useChat(): UseChatReturn {
   const [isWatching, setIsWatching] = useState(false);
   const [queuedMessages, setQueuedMessages] = useState<QueuedMessage[]>([]);
   const queueRef = useRef<QueuedMessage[]>([]);
-  const abortRef = useRef<AbortController | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
   const lastModifiedRef = useRef<number>(0);
   const sessionIdRef = useRef<string | null>(null);
@@ -351,6 +109,11 @@ export function useChat(): UseChatReturn {
           const data = JSON.parse(e.data);
           if (data.isActive === true) {
             setIsStreaming(true);
+          } else {
+            setIsStreaming(false);
+          }
+          if (data.modifiedAt) {
+            lastModifiedRef.current = data.modifiedAt;
           }
         } catch {
           // ignore
@@ -365,8 +128,20 @@ export function useChat(): UseChatReturn {
             if (data.messages?.length > 0) setMessages(data.messages);
             if (data.toolCalls?.length > 0) setToolCalls(data.toolCalls);
           }
-          if (data.isActive === false && !abortRef.current) {
+          if (data.isActive === false) {
             setIsStreaming(false);
+            const pending = queueRef.current;
+            if (pending.length > 0) {
+              const next = pending[0];
+              setQueuedMessages((prev) => prev.slice(1));
+              const overrides =
+                next.model || next.mode ? { model: next.model, mode: next.mode } : undefined;
+              setTimeout(() => {
+                sendMessageRef.current?.(next.content, overrides);
+              }, 0);
+            }
+          } else if (data.isActive === true) {
+            setIsStreaming(true);
           }
         } catch {
           // malformed event
@@ -383,9 +158,36 @@ export function useChat(): UseChatReturn {
   useEffect(() => {
     return () => {
       stopWatching();
-      abortRef.current?.abort();
     };
   }, [stopWatching]);
+
+  useEffect(() => {
+    const handleVisibility = async () => {
+      if (document.visibilityState !== "visible") return;
+      const sid = sessionIdRef.current;
+      if (!sid) return;
+
+      try {
+        const res = await apiFetch(`/api/sessions/history?id=${encodeURIComponent(sid)}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.messages?.length > 0) setMessages(data.messages);
+        if (data.toolCalls?.length > 0) setToolCalls(data.toolCalls);
+        if (data.modifiedAt) lastModifiedRef.current = data.modifiedAt;
+
+        const active = await fetchActiveSessions();
+        setIsStreaming(active.includes(sid));
+        setError(null);
+
+        if (!eventSourceRef.current) startWatching(sid);
+      } catch {
+        // network still down
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, [startWatching]);
 
   const clearChat = useCallback(() => {
     stopWatching();
@@ -398,10 +200,6 @@ export function useChat(): UseChatReturn {
   }, [stopWatching]);
 
   const stopStreaming = useCallback(() => {
-    if (abortRef.current) {
-      abortRef.current.abort();
-      abortRef.current = null;
-    }
     if (sessionIdRef.current) {
       apiFetch("/api/sessions/active", {
         method: "DELETE",
@@ -480,22 +278,16 @@ export function useChat(): UseChatReturn {
       const effectiveModel = overrides?.model ?? selectedModel;
       const effectiveMode = overrides?.mode ?? selectedMode;
 
-      const body: ChatRequest = {
-        prompt,
-        sessionId: sessionIdRef.current ?? undefined,
-        model: effectiveModel !== "auto" ? effectiveModel : undefined,
-        mode: effectiveMode !== "agent" ? effectiveMode : undefined,
-      };
-
-      abortRef.current = new AbortController();
-      let currentAssistantId: string | null = null;
-
       try {
         const res = await apiFetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-          signal: abortRef.current.signal,
+          body: JSON.stringify({
+            prompt,
+            sessionId: sessionIdRef.current ?? undefined,
+            model: effectiveModel !== "auto" ? effectiveModel : undefined,
+            mode: effectiveMode !== "agent" ? effectiveMode : undefined,
+          }),
         });
 
         if (!res.ok) {
@@ -503,145 +295,19 @@ export function useChat(): UseChatReturn {
           throw new Error(err.error || `HTTP ${res.status}`);
         }
 
-        const reader = res.body?.getReader();
-        if (!reader) throw new Error("No response body");
+        const data = await res.json();
+        const newSessionId = data.sessionId as string;
 
-        const decoder = new TextDecoder();
-        let buffer = "";
+        sessionIdRef.current = newSessionId;
+        setSessionId(newSessionId);
+        if (data.model) setModel(data.model);
 
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n");
-          buffer = lines.pop() || "";
-
-          for (const line of lines) {
-            if (!line.trim()) continue;
-
-            let parsed: Record<string, unknown>;
-            try {
-              parsed = JSON.parse(line);
-            } catch {
-              continue;
-            }
-
-            if (parsed.type === "error") {
-              setError((parsed.message as string) || "Unknown CLI error");
-              continue;
-            }
-
-            const event = parsed as unknown as StreamEvent;
-
-            try {
-              switch (event.type) {
-                case "system": {
-                  if (event.subtype === "init") {
-                    sessionIdRef.current = event.session_id;
-                    setSessionId(event.session_id);
-                    setModel(event.model);
-                  }
-                  break;
-                }
-
-                case "assistant": {
-                  const text = extractAssistantText(
-                    event.message as unknown as Record<string, unknown>,
-                  );
-                  if (!text) break;
-
-                  if (!currentAssistantId) {
-                    currentAssistantId = uuid();
-                    const msg: ChatMessage = {
-                      id: currentAssistantId,
-                      role: "assistant",
-                      content: text,
-                      timestamp: Date.now(),
-                    };
-                    setMessages((prev) => [...prev, msg]);
-                  } else {
-                    setMessages((prev) =>
-                      prev.map((m) =>
-                        m.id === currentAssistantId ? { ...m, content: m.content + text } : m,
-                      ),
-                    );
-                  }
-                  break;
-                }
-
-                case "tool_call": {
-                  if (event.subtype === "started") {
-                    const info = extractToolCallInfo(event.tool_call, event.call_id, "running");
-                    const tc: ToolCallInfo = {
-                      id: uuid(),
-                      callId: event.call_id,
-                      type: info.type || "other",
-                      name: info.name || "Tool",
-                      path: info.path,
-                      command: info.command,
-                      args: info.args,
-                      todos: info.todos,
-                      status: "running",
-                      timestamp: Date.now(),
-                    };
-                    setToolCalls((prev) => {
-                      const next = [...prev, tc];
-                      return next.length > 500 ? next.slice(-500) : next;
-                    });
-                  } else if (event.subtype === "completed") {
-                    const info = extractToolCallInfo(event.tool_call, event.call_id, "completed");
-                    setToolCalls((prev) =>
-                      prev.map((tc) =>
-                        tc.callId === event.call_id
-                          ? {
-                              ...tc,
-                              status: "completed",
-                              result: info.result,
-                              diff: info.diff,
-                              diffStartLine: info.diffStartLine,
-                              todos: info.todos,
-                            }
-                          : tc,
-                      ),
-                    );
-                  }
-                  break;
-                }
-
-                case "result": {
-                  if (!sessionIdRef.current && event.session_id) {
-                    sessionIdRef.current = event.session_id;
-                    setSessionId(event.session_id);
-                  }
-                  break;
-                }
-              }
-            } catch {
-              // skip malformed events
-            }
-          }
-        }
+        startWatching(newSessionId);
       } catch (err) {
         if (err instanceof Error && err.name === "AbortError") return;
         const message = err instanceof Error ? err.message : "Unknown error";
         setError(message);
-      } finally {
         setIsStreaming(false);
-        abortRef.current = null;
-
-        const pending = queueRef.current;
-        if (pending.length > 0) {
-          const next = pending[0];
-          setQueuedMessages((prev) => prev.slice(1));
-          const overrides =
-            next.model || next.mode ? { model: next.model, mode: next.mode } : undefined;
-          setTimeout(() => {
-            sendMessageRef.current?.(next.content, overrides);
-          }, 0);
-        } else if (sessionIdRef.current) {
-          startWatching(sessionIdRef.current);
-        }
       }
     },
     [isStreaming, selectedModel, selectedMode, stopWatching, startWatching],
@@ -651,28 +317,10 @@ export function useChat(): UseChatReturn {
     sendMessageRef.current = sendMessage;
   }, [sendMessage]);
 
-  useEffect(() => {
-    if (!isStreaming || !sessionId) return;
-    if (abortRef.current) return;
-
-    const interval = setInterval(async () => {
-      const active = await fetchActiveSessions();
-      if (!active.includes(sessionIdRef.current ?? "")) {
-        setIsStreaming(false);
-      }
-    }, 3000);
-
-    return () => clearInterval(interval);
-  }, [isStreaming, sessionId]);
-
   const forceSendQueued = useCallback((id: string) => {
     const msg = queueRef.current.find((m) => m.id === id);
     if (!msg) return;
     setQueuedMessages((prev) => prev.filter((m) => m.id !== id));
-    if (abortRef.current) {
-      abortRef.current.abort();
-      abortRef.current = null;
-    }
     setIsStreaming(false);
     const overrides =
       msg.model || msg.mode ? { model: msg.model, mode: msg.mode } : undefined;

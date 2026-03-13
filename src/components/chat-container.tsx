@@ -160,7 +160,7 @@ export function ChatContainer({
           {model && isStreaming && (
             <>
               <span className="text-text-muted text-[11px]">/</span>
-              <span className="text-[11px] text-text-muted">{model}</span>
+              <span className="text-[11px] text-text-muted truncate max-w-[120px]">{model}</span>
             </>
           )}
         </div>

@@ -138,7 +138,7 @@ export function ChatInput({
                   {modelsLoading ? (
                     <span className="w-2.5 h-2.5 rounded-full border border-text-muted border-t-transparent animate-spin" />
                   ) : (
-                    <span>{currentModelLabel}</span>
+                    <span className="truncate max-w-[150px]">{currentModelLabel}</span>
                   )}
                   <svg
                     width="10"

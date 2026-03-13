@@ -1,4 +1,4 @@
-import { spawnAgent, createStreamFromProcess } from "@/lib/cursor-cli";
+import { spawnAgent } from "@/lib/cursor-cli";
 import { getWorkspace } from "@/lib/workspace";
 import { upsertSession } from "@/lib/session-store";
 import { registerProcess, promoteToSessionId } from "@/lib/process-registry";
@@ -6,59 +6,60 @@ import { SESSION_ID_RE } from "@/lib/validation";
 import type { ChatRequest, AgentMode } from "@/lib/types";
 
 const VALID_MODES: AgentMode[] = ["agent", "ask", "plan"];
+const INIT_TIMEOUT_MS = 30_000;
 
 export const dynamic = "force-dynamic";
 
-function createTappedStream(
-  source: ReadableStream<Uint8Array>,
+function waitForSessionId(
+  child: ReturnType<typeof spawnAgent>,
   workspace: string,
   prompt: string,
   requestId: string,
-): ReadableStream<Uint8Array> {
-  const reader = source.getReader();
-  let captured = false;
-  let closed = false;
+): Promise<string | null> {
+  return new Promise((resolve) => {
+    let found = false;
+    let buffer = "";
 
-  return new ReadableStream({
-    async pull(controller) {
-      try {
-        const { done, value } = await reader.read();
-        if (closed) return;
-        if (done) {
-          closed = true;
-          controller.close();
-          return;
-        }
+    const timer = setTimeout(() => {
+      if (!found) resolve(null);
+    }, INIT_TIMEOUT_MS);
 
-        if (!captured && value) {
-          const text = new TextDecoder().decode(value);
-          for (const line of text.split("\n")) {
-            if (!line.trim()) continue;
-            try {
-              const event = JSON.parse(line);
-              if (event.type === "system" && event.subtype === "init" && event.session_id) {
-                upsertSession(event.session_id, workspace, prompt);
-                promoteToSessionId(requestId, event.session_id);
-                captured = true;
-              }
-            } catch {
-              // non-json line, skip
-            }
+    child.stdout?.on("data", (chunk: Buffer) => {
+      if (found) return;
+      buffer += chunk.toString();
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const event = JSON.parse(line);
+          if (event.type === "system" && event.subtype === "init" && event.session_id) {
+            found = true;
+            clearTimeout(timer);
+            upsertSession(event.session_id, workspace, prompt);
+            promoteToSessionId(requestId, event.session_id);
+            resolve(event.session_id);
           }
-        }
-
-        controller.enqueue(value);
-      } catch {
-        if (!closed) {
-          closed = true;
+        } catch {
+          // non-json line
         }
       }
-    },
-    cancel() {
-      closed = true;
-      // do NOT cancel the underlying reader or kill the process --
-      // the agent keeps running in the background
-    },
+    });
+
+    child.on("close", () => {
+      if (!found) {
+        clearTimeout(timer);
+        resolve(null);
+      }
+    });
+
+    child.on("error", () => {
+      if (!found) {
+        clearTimeout(timer);
+        resolve(null);
+      }
+    });
   });
 }
 
@@ -110,17 +111,15 @@ export async function POST(req: Request) {
       promoteToSessionId(requestId, body.sessionId);
     }
 
-    const rawStream = createStreamFromProcess(child);
-    const stream = createTappedStream(rawStream, workspace, body.prompt, requestId);
+    child.stderr?.on("data", () => {});
 
-    return new Response(stream, {
-      headers: {
-        "Content-Type": "application/x-ndjson",
-        "Cache-Control": "no-cache",
-        Connection: "keep-alive",
-        "X-Content-Type-Options": "nosniff",
-      },
-    });
+    const sessionId = await waitForSessionId(child, workspace, body.prompt, requestId);
+
+    if (!sessionId) {
+      return Response.json({ error: "Agent failed to start" }, { status: 500 });
+    }
+
+    return Response.json({ sessionId });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to start agent";
     return Response.json({ error: message }, { status: 500 });
