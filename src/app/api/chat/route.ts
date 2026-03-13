@@ -96,16 +96,27 @@ export async function POST(req: Request) {
       promoteToSessionId(requestId, body.sessionId);
     }
 
+    const verbose = process.env.CLR_VERBOSE === "1";
+
     child.stderr?.on("data", (chunk: Buffer) => {
       const text = chunk.toString().trim();
       if (text) console.error("[agent stderr]", text);
     });
 
+    if (verbose) {
+      console.log(`[chat] spawning agent in ${workspace} (model=${body.model ?? "default"}, mode=${body.mode ?? "agent"})`);
+    }
+
     const sessionId = await waitForSessionId(child, workspace, body.prompt, requestId);
 
     if (!sessionId) {
       child.kill("SIGTERM");
+      console.error("[chat] agent did not emit init event within timeout");
       return serverError("Agent failed to start");
+    }
+
+    if (verbose) {
+      console.log(`[chat] agent started session ${sessionId}`);
     }
 
     return Response.json({ sessionId });

@@ -60,12 +60,14 @@ if (args.includes("--help") || args.includes("-h")) {
     -p, --port   Port to run on (default: 3100)
     --no-open    Don't auto-open the browser
     --no-qr      Don't show QR code in terminal
+    -v, --verbose  Show all server and agent output
     -h, --help   Show this help
 
   Examples:
     clr                          # Start in current folder
     clr ~/projects/my-app        # Start for a specific project
     clr . --port 8080            # Use a different port
+    clr -v                       # Verbose output for debugging
 `);
   process.exit(0);
 }
@@ -74,6 +76,7 @@ const positional = [];
 let rawPort = process.env.PORT || "3100";
 let noOpen = false;
 let noQr = false;
+let verbose = false;
 
 for (let i = 0; i < args.length; i++) {
   const a = args[i];
@@ -83,6 +86,8 @@ for (let i = 0; i < args.length; i++) {
     noOpen = true;
   } else if (a === "--no-qr") {
     noQr = true;
+  } else if (a === "--verbose" || a === "-v") {
+    verbose = true;
   } else if (!a.startsWith("-")) {
     positional.push(a);
   }
@@ -165,6 +170,9 @@ if (networkUrl) {
 }
 console.log(`  \x1b[2mAuth token:\x1b[0m  \x1b[97m${authToken}\x1b[0m`);
 console.log(`  \x1b[2mAuth link:\x1b[0m   \x1b[4m\x1b[97m${authUrl}\x1b[0m`);
+if (verbose) {
+  console.log(`  \x1b[2mVerbose:\x1b[0m     \x1b[33mon\x1b[0m`);
+}
 console.log("");
 
 const qrUrl = networkUrl ? `${networkUrl}?token=${authToken}` : null;
@@ -181,16 +189,15 @@ if (!noQr && qrUrl) {
   });
 }
 
-if (!noOpen) {
+function openBrowser() {
+  if (noOpen) return;
   try {
     const openCmd = process.platform === "darwin"
       ? "open"
       : process.platform === "win32"
         ? "start"
         : "xdg-open";
-    setTimeout(() => {
-      execFileSync(openCmd, [`${localUrl}?token=${authToken}`], { stdio: "ignore" });
-    }, 2000);
+    execFileSync(openCmd, [`${localUrl}?token=${authToken}`], { stdio: "ignore" });
   } catch {
     // silently fail if browser can't open
   }
@@ -211,22 +218,31 @@ const child = spawn(nextBin, nextArgs, {
     CURSOR_WORKSPACE: workspace,
     PORT: port,
     AUTH_TOKEN: authToken,
+    CLR_VERBOSE: verbose ? "1" : "",
   },
 });
 
 let ready = false;
 child.stdout.on("data", (data) => {
-  if (ready) return;
   const text = data.toString();
-  if (text.includes("Ready") || text.includes("ready")) {
+  if (verbose) {
+    process.stdout.write("  \x1b[2m[next]\x1b[0m " + text);
+  }
+  if (!ready && (text.includes("Ready") || text.includes("ready"))) {
     console.log("  \x1b[32m✓ Ready\x1b[0m");
     ready = true;
+    openBrowser();
   }
 });
 
 child.stderr.on("data", (data) => {
   const text = data.toString().trim();
-  if (text) process.stderr.write("  " + text + "\n");
+  if (!text) return;
+  if (verbose) {
+    process.stderr.write("  \x1b[2m[server]\x1b[0m " + text + "\n");
+  } else if (text.includes("Error") || text.includes("error")) {
+    process.stderr.write("  " + text + "\n");
+  }
 });
 
 child.on("close", (code) => {
