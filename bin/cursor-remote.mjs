@@ -225,10 +225,8 @@ child.stdout.on("data", (data) => {
 });
 
 child.stderr.on("data", (data) => {
-  const text = data.toString();
-  if (text.includes("Error") || text.includes("error")) {
-    process.stderr.write("  " + text);
-  }
+  const text = data.toString().trim();
+  if (text) process.stderr.write("  " + text + "\n");
 });
 
 child.on("close", (code) => {
