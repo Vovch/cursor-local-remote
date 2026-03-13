@@ -24,32 +24,34 @@ export function QrModal({ open, onClose }: QrModalProps) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
       onClick={onClose}
     >
       <div
-        className="bg-bg-secondary border border-border rounded-2xl p-6 max-w-sm w-full mx-4 text-center"
+        className="bg-bg-elevated border border-border rounded-xl p-6 max-w-xs w-full mx-4 text-center"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-lg font-semibold mb-1">Connect from another device</h2>
-        <p className="text-text-secondary text-sm mb-5">
-          Scan the QR code or open the URL on any device on your network
+        <p className="text-[13px] font-medium text-text mb-1">Connect device</p>
+        <p className="text-[12px] text-text-muted mb-5">
+          Scan from any device on your network
         </p>
 
         {info ? (
           <>
-            <div className="bg-white rounded-xl p-4 inline-block mb-4">
-              <QRCodeSVG value={info.url} size={200} />
+            <div className="bg-white rounded-lg p-3 inline-block mb-3">
+              <QRCodeSVG value={info.url} size={180} />
             </div>
-            <p className="font-mono text-sm text-accent break-all">{info.url}</p>
+            <p className="font-mono text-[12px] text-text-secondary">{info.url}</p>
           </>
         ) : (
-          <div className="py-12 text-text-muted text-sm">Loading...</div>
+          <div className="py-10 text-text-muted text-[12px]">
+            <span className="w-3.5 h-3.5 inline-block rounded-full border-2 border-text-muted border-t-transparent animate-spin" />
+          </div>
         )}
 
         <button
           onClick={onClose}
-          className="mt-5 w-full py-2 rounded-xl bg-bg-tertiary border border-border text-sm text-text-secondary hover:text-text transition-colors"
+          className="mt-4 w-full py-1.5 rounded-lg text-[12px] text-text-muted hover:text-text-secondary transition-colors"
         >
           Close
         </button>

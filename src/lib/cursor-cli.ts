@@ -1,10 +1,18 @@
 import { spawn, type ChildProcess } from "child_process";
+import type { AgentMode } from "@/lib/types";
+
+const DEBUG = process.env.NODE_ENV === "development";
+
+function log(...args: unknown[]) {
+  if (DEBUG) console.log("[cursor-cli]", ...args);
+}
 
 export interface AgentOptions {
   prompt: string;
   sessionId?: string;
   workspace?: string;
   model?: string;
+  mode?: AgentMode;
   force?: boolean;
 }
 
@@ -27,40 +35,31 @@ export function spawnAgent(options: AgentOptions): ChildProcess {
   if (options.model) {
     args.push("--model", options.model);
   }
+  if (options.mode && options.mode !== "agent") {
+    args.push("--mode", options.mode);
+  }
   if (options.force !== false) {
     args.push("--force");
   }
 
-  return spawn("agent", args, {
+  log("spawning:", "agent", args.join(" "));
+
+  const child = spawn("agent", args, {
     stdio: ["pipe", "pipe", "pipe"],
     env: { ...process.env },
   });
-}
 
-export function listSessions(): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const child = spawn("agent", ["ls"], {
-      stdio: ["pipe", "pipe", "pipe"],
-    });
+  log("pid:", child.pid);
 
-    let stdout = "";
-    let stderr = "";
-
-    child.stdout.on("data", (chunk: Buffer) => {
-      stdout += chunk.toString();
-    });
-    child.stderr.on("data", (chunk: Buffer) => {
-      stderr += chunk.toString();
-    });
-    child.on("close", (code) => {
-      if (code === 0) {
-        resolve(stdout);
-      } else {
-        reject(new Error(stderr || `agent ls exited with code ${code}`));
-      }
-    });
-    child.on("error", reject);
+  child.on("error", (err) => {
+    log("spawn error:", err.message);
   });
+
+  child.on("close", (code, signal) => {
+    log("process closed, code:", code, "signal:", signal);
+  });
+
+  return child;
 }
 
 export function createStreamFromProcess(child: ChildProcess): ReadableStream<Uint8Array> {
@@ -69,9 +68,14 @@ export function createStreamFromProcess(child: ChildProcess): ReadableStream<Uin
   return new ReadableStream({
     start(controller) {
       let buffer = "";
+      let chunkCount = 0;
 
       child.stdout?.on("data", (chunk: Buffer) => {
-        buffer += chunk.toString();
+        const text = chunk.toString();
+        chunkCount++;
+        log(`stdout chunk #${chunkCount} (${text.length} bytes):`, text.slice(0, 200));
+
+        buffer += text;
         const lines = buffer.split("\n");
         buffer = lines.pop() || "";
 
@@ -83,14 +87,17 @@ export function createStreamFromProcess(child: ChildProcess): ReadableStream<Uin
       });
 
       child.stderr?.on("data", (chunk: Buffer) => {
+        const text = chunk.toString();
+        log("stderr:", text.slice(0, 500));
         const errorEvent = JSON.stringify({
           type: "error",
-          message: chunk.toString(),
+          message: text,
         });
         controller.enqueue(encoder.encode(errorEvent + "\n"));
       });
 
-      child.on("close", () => {
+      child.on("close", (code) => {
+        log("stream closing, exit code:", code, "remaining buffer:", buffer.length, "bytes");
         if (buffer.trim()) {
           controller.enqueue(encoder.encode(buffer + "\n"));
         }
@@ -98,6 +105,7 @@ export function createStreamFromProcess(child: ChildProcess): ReadableStream<Uin
       });
 
       child.on("error", (err) => {
+        log("stream error:", err.message);
         const errorEvent = JSON.stringify({
           type: "error",
           message: err.message,
@@ -108,6 +116,7 @@ export function createStreamFromProcess(child: ChildProcess): ReadableStream<Uin
     },
 
     cancel() {
+      log("stream cancelled, killing process");
       child.kill("SIGTERM");
     },
   });

@@ -6,58 +6,84 @@ Inspired by [Claude Code's Remote Control](https://code.claude.com/docs/en/remot
 
 ## How it works
 
-1. Start the Next.js server on your development machine
-2. Open the URL (or scan the QR code) from any device on the same network
-3. Send messages through the web UI — they run on Cursor's CLI agent locally
-4. See assistant responses, tool calls (file reads, writes, shell commands) streamed in real time
-
 ```
 Phone / Tablet / Other PC                Your Machine
        (browser)           ──── LAN ────>  Next.js  ──> Cursor CLI (agent)
                            <── stream ───  (0.0.0.0:3000)
 ```
 
+1. Run `cr` in your project folder
+2. A QR code appears in your terminal -- scan it from your phone
+3. Send messages through the web UI, they run on Cursor's agent locally
+4. See responses, tool calls (file reads, writes, shell commands) streamed in real time
+5. Browse and resume all your past Cursor sessions for that project
+
 ## Prerequisites
 
 - [Node.js](https://nodejs.org/) 18+
 - [Cursor CLI](https://cursor.com/cli) installed and authenticated (`agent login`)
-- A Cursor subscription (the CLI requires one)
+- A Cursor subscription
 
-## Quick start
+## Install
 
 ```bash
 git clone https://github.com/your-user/cursor-remote-control.git
 cd cursor-remote-control
 npm install
-npm run dev
+npm link   # makes `cr` available globally
 ```
-
-The server starts on `http://0.0.0.0:3000`. Open it from any device on your network using your machine's LAN IP (shown in the terminal output or via the QR code button in the UI).
 
 ## Usage
 
-- **Send messages**: type a prompt and press Enter (or the send button)
-- **QR code**: tap the QR icon in the top bar to show a scannable link for your phone
-- **Sessions**: tap the hamburger menu to browse and resume previous agent sessions
-- **Tool calls**: file reads, writes, and shell commands appear as collapsible cards in the conversation
+```bash
+# Start in current folder
+cr
 
-## Project structure
+# Start for a specific project
+cr ~/projects/my-app
+
+# Use a different port
+cr --port 8080
+
+# Skip auto-opening browser
+cr --no-open
+```
+
+### Web UI
+
+- **Send messages**: type a prompt and press Enter
+- **QR code**: tap the QR icon in the top bar to show a scannable link
+- **Sessions**: tap the hamburger menu to browse all past sessions (reads from Cursor's own session data)
+- **Resume**: tap any past session to continue the conversation
+- **Workspace**: tap the folder bar to change which project the agent works in
+- **Tool calls**: file reads, writes, and shell commands appear as collapsible cards
+
+### Sessions
+
+The sidebar shows all your sessions for the current workspace -- both sessions started from this tool and from the Cursor IDE itself. It reads directly from Cursor's `~/.cursor/projects/` data, so everything stays in sync.
+
+## Architecture
 
 ```
 src/
   app/
     api/
-      chat/route.ts       - POST streaming endpoint, spawns Cursor CLI
-      sessions/route.ts   - GET session list via `agent ls`
-      info/route.ts       - GET LAN IP and network info
+      chat/route.ts         Streams Cursor CLI output to the browser
+      sessions/route.ts     Merges Cursor transcripts + our session store
+      info/route.ts         LAN IP, workspace, QR code data
     layout.tsx
     page.tsx
-  components/             - React UI components
-  hooks/use-chat.ts       - Chat state and stream consumption
+  components/               React UI components (chat, sidebar, QR modal)
+  hooks/use-chat.ts         Chat state + stream consumption
   lib/
-    cursor-cli.ts         - Cursor CLI process management
-    types.ts              - TypeScript types for CLI stream events
-    network.ts            - LAN IP detection
+    cursor-cli.ts           Spawns `agent -p --stream-json` processes
+    transcript-reader.ts    Reads ~/.cursor/projects/<key>/agent-transcripts/
+    session-store.ts        Our own session tracking (JSON file)
+    workspace.ts            Workspace path management
+    network.ts              LAN IP detection
+    types.ts                TypeScript types for CLI stream events
+bin/
+  cursor-remote.mjs         CLI entry point (`cr` command)
 ```
 
 ## Tech stack

@@ -121,17 +121,23 @@ export interface ToolCallInfo {
   timestamp: number;
 }
 
-export interface SessionInfo {
+export interface StoredSession {
   id: string;
   title: string;
-  date: string;
+  workspace: string;
+  preview: string;
+  createdAt: number;
+  updatedAt: number;
 }
+
+export type AgentMode = "agent" | "ask" | "plan";
 
 export interface ChatRequest {
   prompt: string;
   sessionId?: string;
   workspace?: string;
   model?: string;
+  mode?: AgentMode;
 }
 
 export interface NetworkInfo {

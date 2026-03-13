@@ -1,51 +1,53 @@
-import { listSessions } from "@/lib/cursor-cli";
-import type { SessionInfo } from "@/lib/types";
+import { listSessions, deleteSession } from "@/lib/session-store";
+import { readCursorSessions } from "@/lib/transcript-reader";
+import { getWorkspace } from "@/lib/workspace";
+import type { StoredSession } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-function parseSessionList(raw: string): SessionInfo[] {
-  const lines = raw.trim().split("\n").filter(Boolean);
-  const sessions: SessionInfo[] = [];
+function mergeSessions(ours: StoredSession[], cursor: StoredSession[]): StoredSession[] {
+  const byId = new Map<string, StoredSession>();
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-
-    const match = line.match(/^(\S+)\s+(.+?)\s{2,}(.+)$/);
-    if (match && match[1]) {
-      sessions.push({
-        id: match[1],
-        title: match[2].trim(),
-        date: match[3].trim(),
+  for (const s of cursor) {
+    byId.set(s.id, s);
+  }
+  for (const s of ours) {
+    const existing = byId.get(s.id);
+    if (existing) {
+      byId.set(s.id, {
+        ...existing,
+        updatedAt: Math.max(existing.updatedAt, s.updatedAt),
       });
-      continue;
-    }
-
-    const parts = line.split(/\s{2,}/);
-    const id = parts[0]?.trim();
-    if (id) {
-      sessions.push({
-        id,
-        title: parts[1]?.trim() || "Untitled",
-        date: parts[2]?.trim() || "",
-      });
+    } else {
+      byId.set(s.id, s);
     }
   }
 
-  const seen = new Set<string>();
-  return sessions.filter((s) => {
-    if (!s.id || seen.has(s.id)) return false;
-    seen.add(s.id);
-    return true;
-  });
+  return Array.from(byId.values()).sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
-export async function GET() {
-  try {
-    const raw = await listSessions();
-    const sessions = parseSessionList(raw);
-    return Response.json({ sessions });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Failed to list sessions";
-    return Response.json({ sessions: [], error: message }, { status: 200 });
+export async function GET(req: Request) {
+  const url = new URL(req.url);
+  const all = url.searchParams.get("all") === "true";
+  const workspace = getWorkspace();
+
+  if (all) {
+    const ours = listSessions();
+    return Response.json({ sessions: ours, workspace });
   }
+
+  const cursorSessions = readCursorSessions(workspace);
+  const ourSessions = listSessions(workspace);
+  const merged = mergeSessions(ourSessions, cursorSessions);
+
+  return Response.json({ sessions: merged, workspace });
+}
+
+export async function DELETE(req: Request) {
+  const { sessionId } = await req.json();
+  if (!sessionId) {
+    return Response.json({ error: "sessionId required" }, { status: 400 });
+  }
+  deleteSession(sessionId);
+  return Response.json({ ok: true });
 }

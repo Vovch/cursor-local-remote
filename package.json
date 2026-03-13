@@ -5,7 +5,8 @@
   "type": "module",
   "description": "Control Cursor IDE from any device on your local network",
   "bin": {
-    "cursor-remote": "./bin/cursor-remote.mjs"
+    "cursor-remote": "./bin/cursor-remote.mjs",
+    "cr": "./bin/cursor-remote.mjs"
   },
   "scripts": {
     "dev": "next dev --hostname 0.0.0.0",
@@ -16,9 +17,10 @@
   },
   "dependencies": {
     "next": "^15.3.3",
+    "qrcode-terminal": "^0.12.0",
+    "qrcode.react": "^4.2.0",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0",
-    "qrcode.react": "^4.2.0"
+    "react-dom": "^19.1.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.7",

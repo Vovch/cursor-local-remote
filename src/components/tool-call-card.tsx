@@ -7,68 +7,47 @@ interface ToolCallCardProps {
   toolCall: ToolCallInfo;
 }
 
-const ICON_MAP: Record<string, string> = {
-  read: "📄",
-  write: "✏️",
-  shell: "⚡",
-  other: "🔧",
-};
-
 export function ToolCallCard({ toolCall }: ToolCallCardProps) {
   const [expanded, setExpanded] = useState(false);
-  const icon = ICON_MAP[toolCall.type] || "🔧";
   const isRunning = toolCall.status === "running";
 
+  const fileName = toolCall.path?.split("/").pop() || toolCall.name;
+
   return (
-    <div className="mb-2 mx-1">
+    <div className="py-1 pl-9">
       <button
         onClick={() => setExpanded((v) => !v)}
-        className="w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg bg-bg-secondary border border-border hover:border-border-light transition-colors text-xs"
+        className="flex items-center gap-1.5 text-[12px] text-text-muted hover:text-text-secondary transition-colors"
       >
-        <span className="shrink-0">{icon}</span>
-        <span className="font-medium text-text-secondary truncate flex-1">
-          {toolCall.name}
-        </span>
-        {toolCall.path && (
-          <span className="text-text-muted truncate max-w-[50%]">
-            {toolCall.path.split("/").pop()}
-          </span>
-        )}
         {isRunning ? (
-          <span className="shrink-0 w-2 h-2 rounded-full bg-warning animate-pulse" />
+          <span className="w-3 h-3 rounded-full border-2 border-warning border-t-transparent animate-spin" />
         ) : (
-          <span className="shrink-0 w-2 h-2 rounded-full bg-success" />
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-success">
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
         )}
-        <span
-          className={`shrink-0 text-text-muted transition-transform ${
-            expanded ? "rotate-180" : ""
-          }`}
+        <span className="font-mono">{fileName}</span>
+        {toolCall.result && (
+          <span className="text-text-muted">{toolCall.result}</span>
+        )}
+        <svg
+          width="10"
+          height="10"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          className={`transition-transform ${expanded ? "rotate-180" : ""}`}
         >
-          ▾
-        </span>
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
       </button>
 
       {expanded && (
-        <div className="mt-1 px-3 py-2 rounded-lg bg-bg-secondary border border-border text-xs text-text-muted">
-          {toolCall.path && (
-            <p className="mb-1">
-              <span className="text-text-secondary">Path: </span>
-              <span className="font-mono">{toolCall.path}</span>
-            </p>
-          )}
-          {toolCall.args && (
-            <p className="mb-1">
-              <span className="text-text-secondary">Args: </span>
-              <span className="font-mono break-all">{toolCall.args}</span>
-            </p>
-          )}
-          {toolCall.result && (
-            <p>
-              <span className="text-text-secondary">Result: </span>
-              {toolCall.result}
-            </p>
-          )}
-          {isRunning && <p className="text-warning">Running...</p>}
+        <div className="mt-1 ml-4.5 pl-3 border-l border-border text-[11px] font-mono text-text-muted py-1 space-y-0.5">
+          {toolCall.path && <p>{toolCall.path}</p>}
+          {toolCall.args && <p className="break-all">{toolCall.args}</p>}
+          {isRunning && <p className="text-warning">running...</p>}
         </div>
       )}
     </div>
