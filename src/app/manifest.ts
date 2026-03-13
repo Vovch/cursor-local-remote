@@ -2,16 +2,18 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Cursor Remote Control",
-    short_name: "Cursor Remote",
+    id: "/",
+    name: "Cursor Local Remote",
+    short_name: "CLR",
     description: "Control Cursor IDE from any device on your local network",
     start_url: "/",
     display: "standalone",
     background_color: "#0a0a0b",
     theme_color: "#0a0a0b",
     icons: [
+      { src: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
       { src: "/icon-192.png", sizes: "192x192", type: "image/png" },
-      { src: "/icon-512.png", sizes: "512x512", type: "image/png" },
+      { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
     ],
   };
 }

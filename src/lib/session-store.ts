@@ -9,7 +9,7 @@ const DB_PATH = join(DATA_DIR, "sessions.db");
 
 let db: Database.Database | null = null;
 
-function getDb(): Database.Database {
+export function getDb(): Database.Database {
   if (db) return db;
 
   mkdirSync(DATA_DIR, { recursive: true });
@@ -24,7 +24,16 @@ function getDb(): Database.Database {
       preview TEXT NOT NULL DEFAULT '',
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
-    )
+    );
+    CREATE TABLE IF NOT EXISTS config (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS push_subscriptions (
+      endpoint TEXT PRIMARY KEY,
+      subscription TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
   `);
 
   return db;

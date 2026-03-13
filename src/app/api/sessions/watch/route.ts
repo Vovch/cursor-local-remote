@@ -92,11 +92,16 @@ export async function GET(req: Request) {
         const { messages, toolCalls } = parseLiveEvents(events, sessionId);
         controller.enqueue(sseMessage("connected", { messages, toolCalls, modifiedAt: Date.now(), isActive: true }));
 
+        let liveDebounce: ReturnType<typeof setTimeout> | null = null;
         unsubLive = onLiveUpdate(sessionId, () => {
           if (cancelled) return;
-          const latest = getLiveEvents(sessionId);
-          const parsed = parseLiveEvents(latest, sessionId);
-          controller.enqueue(sseMessage("update", { messages: parsed.messages, toolCalls: parsed.toolCalls, modifiedAt: Date.now(), isActive: isActive(sessionId) }));
+          if (liveDebounce) clearTimeout(liveDebounce);
+          liveDebounce = setTimeout(() => {
+            if (cancelled) return;
+            const latest = getLiveEvents(sessionId);
+            const parsed = parseLiveEvents(latest, sessionId);
+            controller.enqueue(sseMessage("update", { messages: parsed.messages, toolCalls: parsed.toolCalls, modifiedAt: Date.now(), isActive: isActive(sessionId) }));
+          }, SSE_DEBOUNCE_MS);
         });
 
         filePollTimer = setInterval(async () => {

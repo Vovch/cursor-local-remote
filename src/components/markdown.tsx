@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
@@ -83,7 +84,7 @@ const components: Components = {
   ),
 };
 
-export function Markdown({ content }: MarkdownProps) {
+export const Markdown = memo(function Markdown({ content }: MarkdownProps) {
   return (
     <div className="text-text">
       <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={components}>
@@ -91,4 +92,4 @@ export function Markdown({ content }: MarkdownProps) {
       </ReactMarkdown>
     </div>
   );
-}
+});

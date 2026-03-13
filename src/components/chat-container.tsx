@@ -116,18 +116,21 @@ export function ChatContainer({
     }
     prevStreamingRef.current = isStreaming;
     onStreamingChange?.(isStreaming);
-  }, [isStreaming, onStreamingChange, error, messages, notifications, sound]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isStreaming, error]);
 
   useEffect(() => {
     onSessionIdChange?.(sessionId);
-  }, [sessionId, onSessionIdChange]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId]);
 
   useEffect(() => {
     const firstUser = messages.find((m) => m.role === "user");
     if (firstUser) {
       onLabelChange?.(firstUser.content.slice(0, 50));
     }
-  }, [messages, onLabelChange]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages]);
 
   const dirName = workspace.split("/").filter(Boolean).pop() || "~";
 

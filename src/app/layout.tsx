@@ -1,13 +1,14 @@
 import type { Metadata, Viewport } from "next";
+import { PwaInstall } from "@/components/pwa-install";
 import { SwRegister } from "@/components/sw-register";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Cursor Remote Control",
+  title: "Cursor Local Remote",
   description: "Control Cursor IDE from any device on your local network",
   appleWebApp: {
     capable: true,
-    title: "Cursor Remote",
+    title: "CLR",
     statusBarStyle: "black-translucent",
   },
 };
@@ -26,6 +27,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="overscroll-none">
         {children}
         <SwRegister />
+        <PwaInstall />
       </body>
     </html>
   );

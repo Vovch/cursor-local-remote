@@ -1,12 +1,20 @@
 import type { ChildProcess } from "child_process";
 import { LIVE_EVENT_TTL_MS } from "@/lib/constants";
 
+type ProcessExitHook = (sessionId: string, workspace: string) => void;
+
 interface RunningProcess {
   child: ChildProcess;
   sessionId: string | null;
   mapKey: string;
   workspace: string;
   startedAt: number;
+}
+
+let globalExitHook: ProcessExitHook | null = null;
+
+export function setProcessExitHook(hook: ProcessExitHook): void {
+  globalExitHook = hook;
 }
 
 const processes = new Map<string, RunningProcess>();
@@ -58,11 +66,19 @@ export function registerProcess(
   processes.set(requestId, entry);
 
   const onExit = () => {
+    const sid = entry.sessionId ?? entry.mapKey;
     processes.delete(entry.mapKey);
     const listeners = exitListeners.get(entry.mapKey);
     if (listeners) {
       exitListeners.delete(entry.mapKey);
       for (const cb of listeners) cb();
+    }
+    if (globalExitHook && entry.sessionId) {
+      try {
+        globalExitHook(sid, entry.workspace);
+      } catch {
+        // don't let push errors break process cleanup
+      }
     }
     setTimeout(() => {
       liveEvents.delete(entry.mapKey);

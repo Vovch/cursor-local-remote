@@ -74,9 +74,11 @@ export function useChat(): UseChatReturn {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const handleStreamStart = useCallback(() => setIsStreaming(true), []);
+
   const watch = useSessionWatch({
     onStreamEnd: handleStreamEnd,
-    onStreamStart: () => setIsStreaming(true),
+    onStreamStart: handleStreamStart,
   });
 
   const queueHook = useMessageQueue({ selectedModel, selectedMode });

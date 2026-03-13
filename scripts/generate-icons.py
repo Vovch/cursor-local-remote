@@ -43,7 +43,6 @@ GLYPHS = {
 
 BG = (10, 10, 11)       # #0a0a0b
 FG = (232, 232, 232)     # #e8e8e8
-ACCENT = (61, 214, 140)  # #3dd68c — subtle underline
 
 
 def render_text(size: int) -> Image.Image:
@@ -75,12 +74,6 @@ def render_text(size: int) -> Image.Image:
                     y = oy + row_i * scale
                     draw.rectangle([x, y, x + scale - 1, y + scale - 1], fill=FG)
 
-    # accent bar below text
-    bar_y = oy + px_h + max(1, scale)
-    bar_h = max(1, scale // 2)
-    bar_inset = int(size * 0.25)
-    draw.rectangle([bar_inset, bar_y, size - bar_inset - 1, bar_y + bar_h - 1], fill=ACCENT)
-
     # rounded corners via mask
     mask = Image.new("L", (size, size), 0)
     radius = max(1, size // 5)
@@ -98,6 +91,7 @@ def main() -> None:
         root / "src" / "app" / "apple-icon.png": 180,
         root / "public" / "icon-192.png": 192,
         root / "public" / "icon-512.png": 512,
+        root / "public" / "apple-touch-icon.png": 180,
     }
 
     for path, size in outputs.items():

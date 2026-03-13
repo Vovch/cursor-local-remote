@@ -113,15 +113,27 @@ export function ChatWorkspace() {
   );
 
   const updateLabel = useCallback((instanceId: string, label: string) => {
-    setInstances((prev) => prev.map((i) => (i.id === instanceId ? { ...i, label } : i)));
+    setInstances((prev) => {
+      const target = prev.find((i) => i.id === instanceId);
+      if (!target || target.label === label) return prev;
+      return prev.map((i) => (i.id === instanceId ? { ...i, label } : i));
+    });
   }, []);
 
-  const updateStreaming = useCallback((instanceId: string, isStreaming: boolean) => {
-    setInstances((prev) => prev.map((i) => (i.id === instanceId ? { ...i, isStreaming } : i)));
+  const updateStreaming = useCallback((instanceId: string, streaming: boolean) => {
+    setInstances((prev) => {
+      const target = prev.find((i) => i.id === instanceId);
+      if (!target || target.isStreaming === streaming) return prev;
+      return prev.map((i) => (i.id === instanceId ? { ...i, isStreaming: streaming } : i));
+    });
   }, []);
 
   const updateSessionId = useCallback((instanceId: string, sessionId: string | null) => {
-    setInstances((prev) => prev.map((i) => (i.id === instanceId ? { ...i, sessionId } : i)));
+    setInstances((prev) => {
+      const target = prev.find((i) => i.id === instanceId);
+      if (!target || target.sessionId === sessionId) return prev;
+      return prev.map((i) => (i.id === instanceId ? { ...i, sessionId } : i));
+    });
   }, []);
 
   const currentSessionId = instances.find((i) => i.id === activeId)?.sessionId ?? null;

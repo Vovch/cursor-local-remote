@@ -48,7 +48,7 @@ const args = process.argv.slice(2);
 
 if (args.includes("--help") || args.includes("-h")) {
   console.log(`
-  cursor-local-remote - Control Cursor IDE from any device on your network
+  Cursor Local Remote - Control Cursor IDE from any device on your network
 
   Usage:
     clr [workspace] [options]

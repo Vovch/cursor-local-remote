@@ -1,4 +1,4 @@
-const CACHE_NAME = "clr-v2";
+const CACHE_NAME = "clr-v3";
 const SHELL_URLS = ["/"];
 
 self.addEventListener("install", (event) => {
@@ -17,10 +17,20 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
+self.addEventListener("push", (event) => {
+  const data = event.data?.json() ?? {};
+  const title = data.title || "Agent finished";
+  const options = {
+    body: data.body || "Response complete",
+    icon: "/icon-192.png",
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
 self.addEventListener("message", (event) => {
   if (event.data?.type === "SHOW_NOTIFICATION") {
     const { title, options } = event.data;
-    self.registration.showNotification(title, options);
+    event.waitUntil(self.registration.showNotification(title, options));
   }
 });
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, memo } from "react";
 import type { ChatMessage } from "@/lib/types";
 import { Markdown } from "./markdown";
 import { useHaptics } from "@/hooks/use-haptics";
@@ -22,7 +22,7 @@ function CopyButton({ copied, onClick }: { copied: boolean; onClick: () => void 
   );
 }
 
-export function MessageBubble({ message }: MessageBubbleProps) {
+export const MessageBubble = memo(function MessageBubble({ message }: MessageBubbleProps) {
   const isUser = message.role === "user";
   const [copied, setCopied] = useState(false);
   const haptics = useHaptics();
@@ -55,4 +55,4 @@ export function MessageBubble({ message }: MessageBubbleProps) {
       <CopyButton copied={copied} onClick={handleCopy} />
     </div>
   );
-}
+});

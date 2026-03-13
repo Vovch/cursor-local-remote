@@ -198,15 +198,28 @@ export function MessageList({
 
   const lastMsg = messages[messages.length - 1];
   const userJustSent = isStreaming && lastMsg?.role === "user";
+  const scrollThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingScrollRef = useRef(false);
 
   useEffect(() => {
     if (!autoScroll && !userJustSent) return;
+
+    if (scrollThrottleRef.current) {
+      pendingScrollRef.current = true;
+      return;
+    }
+
     isScrollingRef.current = true;
     endRef.current?.scrollIntoView({ behavior: "smooth" });
-    const id = setTimeout(() => {
+
+    scrollThrottleRef.current = setTimeout(() => {
+      scrollThrottleRef.current = null;
       isScrollingRef.current = false;
-    }, 150);
-    return () => clearTimeout(id);
+      if (pendingScrollRef.current) {
+        pendingScrollRef.current = false;
+        endRef.current?.scrollIntoView({ behavior: "smooth" });
+      }
+    }, 200);
   }, [messages, toolCalls, autoScroll, userJustSent]);
 
   const sorted: TimelineItem[] = [
