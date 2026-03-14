@@ -3,7 +3,8 @@
 import { useEffect, useState, useCallback } from "react";
 import type { ModelInfo } from "@/lib/types";
 import { apiFetch } from "@/lib/api-fetch";
-import { CloseIcon, ChevronDown } from "./icons";
+import { useHaptics } from "@/hooks/use-haptics";
+import { CloseIcon, ChevronDown, CheckIcon } from "./icons";
 
 interface Settings {
   trust: boolean;
@@ -37,6 +38,8 @@ export function SettingsPanel({ open, onClose, onDefaultModelChange }: SettingsP
   const [loading, setLoading] = useState(true);
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
+  const [cacheCleared, setCacheCleared] = useState(false);
+  const haptics = useHaptics();
 
   useEffect(() => {
     if (!open) return;
@@ -59,6 +62,7 @@ export function SettingsPanel({ open, onClose, onDefaultModelChange }: SettingsP
   }, [open]);
 
   const toggle = useCallback((key: keyof typeof TOGGLE_LABELS) => {
+    haptics.tap();
     setSettings((prev) => {
       const next = { ...prev, [key]: !prev[key] };
       apiFetch("/api/settings", {
@@ -70,9 +74,10 @@ export function SettingsPanel({ open, onClose, onDefaultModelChange }: SettingsP
       });
       return next;
     });
-  }, []);
+  }, [haptics]);
 
   const handleModelSelect = useCallback((modelId: string) => {
+    haptics.select();
     setSettings((prev) => {
       const next = { ...prev, default_model: modelId };
       apiFetch("/api/settings", {
@@ -86,7 +91,25 @@ export function SettingsPanel({ open, onClose, onDefaultModelChange }: SettingsP
     });
     onDefaultModelChange?.(modelId);
     setModelDropdownOpen(false);
-  }, [onDefaultModelChange]);
+  }, [onDefaultModelChange, haptics]);
+
+  const handleClearCache = useCallback(async () => {
+    haptics.warn();
+    try {
+      if ("serviceWorker" in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map((r) => r.unregister()));
+      }
+      if (typeof caches !== "undefined") {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((k) => caches.delete(k)));
+      }
+      setCacheCleared(true);
+      setTimeout(() => setCacheCleared(false), 2000);
+    } catch {
+      // best-effort
+    }
+  }, [haptics]);
 
   const currentModelLabel = models.find((m) => m.id === settings.default_model)?.label || settings.default_model;
 
@@ -97,7 +120,7 @@ export function SettingsPanel({ open, onClose, onDefaultModelChange }: SettingsP
         role="dialog"
         aria-label="Settings"
         aria-hidden={!open}
-        className={`fixed top-0 right-0 z-50 h-full w-[300px] bg-bg-elevated border-l border-border transform transition-transform duration-150 flex flex-col ${
+        className={`fixed inset-0 z-50 bg-bg-elevated transform transition-transform duration-150 flex flex-col sm:inset-auto sm:top-0 sm:right-0 sm:h-full sm:w-[300px] sm:border-l sm:border-border ${
           open ? "translate-x-0" : "translate-x-full"
         }`}
       >
@@ -178,6 +201,30 @@ export function SettingsPanel({ open, onClose, onDefaultModelChange }: SettingsP
                       </div>
                     </>
                   )}
+                </div>
+              </div>
+
+              <div className="pt-3 mt-2 border-t border-border">
+                <div className="px-3 py-2">
+                  <p className="text-[12px] text-text">Cache</p>
+                  <p className="text-[11px] text-text-muted mt-0.5 leading-tight">
+                    Clear cached data if the app feels stale
+                  </p>
+                </div>
+                <div className="px-3">
+                  <button
+                    onClick={handleClearCache}
+                    className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-md bg-bg-surface border border-border text-[12px] text-text-muted hover:text-text-secondary hover:bg-bg-hover transition-colors"
+                  >
+                    {cacheCleared ? (
+                      <>
+                        <CheckIcon size={12} />
+                        Cache cleared
+                      </>
+                    ) : (
+                      "Clear cache"
+                    )}
+                  </button>
                 </div>
               </div>
             </>

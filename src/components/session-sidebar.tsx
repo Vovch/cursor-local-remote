@@ -12,7 +12,7 @@ interface SessionSidebarProps {
   onClose: () => void;
   currentSessionId: string | null;
   onSelectSession: (id: string, workspace?: string) => void;
-  onNewSession: () => void;
+  onNewSession: (workspace?: string) => void;
   activeStatuses?: Record<string, "streaming" | "idle">;
 }
 
@@ -67,7 +67,7 @@ function UnarchiveIcon({ size = 12, className = "" }: { size?: number; className
 }
 
 const PROJECT_STORAGE_KEY = "clr-selected-project";
-const STARRED_STORAGE_KEY = "clr-starred-projects";
+const STARRED_STORAGE_KEY = "clr-starred-projects"; // localStorage fallback key
 
 function StarIcon({ size = 12, filled = false, className = "" }: { size?: number; filled?: boolean; className?: string }) {
   return (
@@ -87,7 +87,7 @@ function StarIcon({ size = 12, filled = false, className = "" }: { size?: number
   );
 }
 
-function loadStarred(): string[] {
+function loadStarredLocal(): string[] {
   if (typeof window === "undefined") return [];
   try {
     return JSON.parse(localStorage.getItem(STARRED_STORAGE_KEY) || "[]");
@@ -98,6 +98,11 @@ function loadStarred(): string[] {
 
 function saveStarred(paths: string[]) {
   localStorage.setItem(STARRED_STORAGE_KEY, JSON.stringify(paths));
+  apiFetch("/api/settings", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ starred_projects: JSON.stringify(paths) }),
+  }).catch(() => {});
 }
 
 function SessionTooltip({ session, children }: { session: StoredSession; children: React.ReactNode }) {
@@ -158,11 +163,29 @@ export function SessionSidebar({
 
   useEffect(() => {
     const stored = localStorage.getItem(PROJECT_STORAGE_KEY);
-    const stars = loadStarred();
+    const localStars = loadStarredLocal();
     // eslint-disable-next-line react-hooks/set-state-in-effect -- hydration: client-only localStorage read
     setSelectedProject(stored);
     // eslint-disable-next-line react-hooks/set-state-in-effect -- hydration: client-only localStorage read
-    setStarred(stars);
+    setStarred(localStars);
+
+    apiFetch("/api/settings")
+      .then((r) => r.json())
+      .then((data) => {
+        const serverStars = data.settings?.starred_projects;
+        if (serverStars) {
+          try {
+            const parsed: string[] = JSON.parse(serverStars);
+            if (parsed.length > 0 || localStars.length === 0) {
+              setStarred(parsed);
+              localStorage.setItem(STARRED_STORAGE_KEY, serverStars);
+            }
+          } catch { /* ignore bad json */ }
+        } else if (localStars.length > 0) {
+          saveStarred(localStars);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const toggleStar = useCallback((e: React.MouseEvent, path: string) => {
@@ -285,7 +308,7 @@ export function SessionSidebar({
         role="dialog"
         aria-label="Session history"
         aria-hidden={!open}
-        className={`fixed top-0 left-0 z-50 h-full w-[280px] bg-bg-elevated border-r border-border transform transition-transform duration-150 flex flex-col ${
+        className={`fixed inset-0 z-50 bg-bg-elevated transform transition-transform duration-150 flex flex-col sm:inset-auto sm:top-0 sm:left-0 sm:h-full sm:w-[280px] sm:border-r sm:border-border ${
           open ? "translate-x-0" : "-translate-x-full"
         }`}
       >
@@ -317,7 +340,8 @@ export function SessionSidebar({
         <div className="px-2 pt-2 pb-1 space-y-1 shrink-0">
           <button
             onClick={() => {
-              onNewSession();
+              const ws = selectedProject && selectedProject !== "__all__" ? selectedProject : undefined;
+              onNewSession(ws);
               onClose();
             }}
             className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-[12px] text-text-muted hover:text-text-secondary hover:bg-bg-hover transition-colors"

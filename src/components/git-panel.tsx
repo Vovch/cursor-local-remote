@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { apiFetch } from "@/lib/api-fetch";
+import { useHaptics } from "@/hooks/use-haptics";
 import { CloseIcon, RefreshIcon, Spinner, CheckIcon, ChevronDown } from "./icons";
 
 interface FileStatus {
@@ -118,6 +119,7 @@ export function GitPanel({ open, onClose, workspace }: GitPanelProps) {
   const [switchingBranch, setSwitchingBranch] = useState(false);
   const [newBranchName, setNewBranchName] = useState("");
   const [creatingBranch, setCreatingBranch] = useState(false);
+  const haptics = useHaptics();
 
   const wsParam = workspace ? `&workspace=${encodeURIComponent(workspace)}` : "";
 
@@ -175,6 +177,7 @@ export function GitPanel({ open, onClose, workspace }: GitPanelProps) {
 
   const toggleSelected = useCallback((file: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    haptics.select();
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(file)) next.delete(file);
@@ -184,6 +187,7 @@ export function GitPanel({ open, onClose, workspace }: GitPanelProps) {
   }, []);
 
   const toggleAll = useCallback(() => {
+    haptics.tap();
     const allFiles = status?.files ?? [];
     if (selected.size === allFiles.length) {
       setSelected(new Set());
@@ -208,13 +212,15 @@ export function GitPanel({ open, onClose, workspace }: GitPanelProps) {
       }
       setFileDiffs({});
       setExpandedFile(null);
+      haptics.warn();
       fetchStatus();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Discard failed");
+      haptics.error();
     } finally {
       setDiscardingSelected(false);
     }
-  }, [confirmDiscard, workspace, selected, fetchStatus]);
+  }, [confirmDiscard, workspace, selected, fetchStatus, haptics]);
 
   const handleCommit = useCallback(async () => {
     if (!commitMsg.trim() || selected.size === 0) return;
@@ -234,13 +240,15 @@ export function GitPanel({ open, onClose, workspace }: GitPanelProps) {
       setTimeout(() => setCommitted(false), 2000);
       setFileDiffs({});
       setExpandedFile(null);
+      haptics.send();
       fetchStatus();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Commit failed");
+      haptics.error();
     } finally {
       setCommitting(false);
     }
-  }, [commitMsg, workspace, fetchStatus, selected]);
+  }, [commitMsg, workspace, fetchStatus, selected, haptics]);
 
   const handlePush = useCallback(async () => {
     setPushing(true);
@@ -253,13 +261,15 @@ export function GitPanel({ open, onClose, workspace }: GitPanelProps) {
       }
       setPushed(true);
       setTimeout(() => setPushed(false), 2000);
+      haptics.send();
       fetchStatus();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Push failed");
+      haptics.error();
     } finally {
       setPushing(false);
     }
-  }, [workspace, fetchStatus]);
+  }, [workspace, fetchStatus, haptics]);
 
   const handleFetch = useCallback(async () => {
     setFetching(true);
@@ -272,13 +282,15 @@ export function GitPanel({ open, onClose, workspace }: GitPanelProps) {
       }
       setFetched(true);
       setTimeout(() => setFetched(false), 2000);
+      haptics.tap();
       fetchStatus();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Fetch failed");
+      haptics.error();
     } finally {
       setFetching(false);
     }
-  }, [workspace, fetchStatus]);
+  }, [workspace, fetchStatus, haptics]);
 
   const handlePull = useCallback(async () => {
     setPulling(true);
@@ -293,13 +305,15 @@ export function GitPanel({ open, onClose, workspace }: GitPanelProps) {
       setTimeout(() => setPulled(false), 2000);
       setFileDiffs({});
       setExpandedFile(null);
+      haptics.tap();
       fetchStatus();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Pull failed");
+      haptics.error();
     } finally {
       setPulling(false);
     }
-  }, [workspace, fetchStatus]);
+  }, [workspace, fetchStatus, haptics]);
 
   const handleCheckout = useCallback(async (branch: string) => {
     setSwitchingBranch(true);
@@ -313,13 +327,15 @@ export function GitPanel({ open, onClose, workspace }: GitPanelProps) {
       setBranchDropdownOpen(false);
       setFileDiffs({});
       setExpandedFile(null);
+      haptics.tap();
       fetchStatus();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Checkout failed");
+      haptics.error();
     } finally {
       setSwitchingBranch(false);
     }
-  }, [workspace, fetchStatus]);
+  }, [workspace, fetchStatus, haptics]);
 
   const handleCreateBranch = useCallback(async () => {
     const name = newBranchName.trim();
@@ -334,13 +350,15 @@ export function GitPanel({ open, onClose, workspace }: GitPanelProps) {
       }
       setNewBranchName("");
       setBranchDropdownOpen(false);
+      haptics.send();
       fetchStatus();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Create branch failed");
+      haptics.error();
     } finally {
       setCreatingBranch(false);
     }
-  }, [newBranchName, workspace, fetchStatus]);
+  }, [newBranchName, workspace, fetchStatus, haptics]);
 
   if (!open) return null;
 
@@ -352,7 +370,7 @@ export function GitPanel({ open, onClose, workspace }: GitPanelProps) {
   return (
     <>
       <div className="fixed inset-0 z-40 bg-black/60" aria-hidden="true" onClick={onClose} />
-      <div className="fixed top-0 right-0 z-50 h-full w-[380px] max-w-[90vw] bg-bg-elevated border-l border-border flex flex-col">
+      <div className="fixed inset-0 z-50 bg-bg-elevated flex flex-col sm:inset-auto sm:top-0 sm:right-0 sm:h-full sm:w-[380px] sm:border-l sm:border-border">
         {/* Header */}
         <div className="flex items-center justify-between h-11 px-3 border-b border-border shrink-0">
           <div className="flex items-center gap-2 min-w-0">

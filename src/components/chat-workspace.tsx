@@ -100,11 +100,18 @@ export function ChatWorkspace() {
     return map;
   }, [instances]);
 
-  const handleNewSession = useCallback(() => {
+  const handleNewSession = useCallback((workspace?: string) => {
     haptics.tap();
     const current = instances.find((i) => i.id === activeId);
-    if (current && !current.sessionId && !current.isStreaming) return;
-    const inst = makeInstance();
+    if (current && !current.sessionId && !current.isStreaming) {
+      if (workspace && current.initialWorkspace !== workspace) {
+        const inst = makeInstance(undefined, workspace);
+        setInstances((prev) => prev.map((i) => (i.id === activeId ? inst : i)));
+        setActiveId(inst.id);
+      }
+      return;
+    }
+    const inst = makeInstance(undefined, workspace);
     setInstances((prev) => [...prev, inst]);
     setActiveId(inst.id);
   }, [haptics, instances, activeId]);

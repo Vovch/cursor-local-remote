@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { ToolCallInfo } from "@/lib/types";
+import { useHaptics } from "@/hooks/use-haptics";
 import { ChevronDown, Spinner } from "./icons";
 
 const IMPORTANT_TYPES = new Set(["edit", "write", "shell", "todo"]);
@@ -231,13 +232,14 @@ function groupSummary(calls: ToolCallInfo[]): string {
 
 export function ToolCallGroup({ toolCalls }: { toolCalls: ToolCallInfo[] }) {
   const [expanded, setExpanded] = useState(false);
+  const haptics = useHaptics();
   const allDone = toolCalls.every((tc) => tc.status === "completed");
   const statusColor = allDone ? "text-text-muted" : "text-text-secondary";
 
   return (
     <div className="py-1.5">
       <button
-        onClick={() => setExpanded((v) => !v)}
+        onClick={() => { haptics.tap(); setExpanded((v) => !v); }}
         aria-expanded={expanded}
         aria-label={`Tool call group: ${groupSummary(toolCalls)}`}
         className="flex items-center gap-2 text-[12px] text-text-muted hover:text-text-secondary transition-colors w-full text-left"
@@ -270,6 +272,7 @@ export function ToolCallGroup({ toolCalls }: { toolCalls: ToolCallInfo[] }) {
 
 export function ToolCallCard({ toolCall, defaultExpanded }: ToolCallCardProps) {
   const [expanded, setExpanded] = useState(defaultExpanded ?? false);
+  const haptics = useHaptics();
   const isRunning = toolCall.status === "running";
 
   const statusColor = isRunning ? "text-text-secondary" : "text-text-muted";
@@ -277,7 +280,7 @@ export function ToolCallCard({ toolCall, defaultExpanded }: ToolCallCardProps) {
   return (
     <div className="py-1.5">
       <button
-        onClick={() => setExpanded((v) => !v)}
+        onClick={() => { haptics.tap(); setExpanded((v) => !v); }}
         aria-expanded={expanded}
         aria-label={`${actionLabel(toolCall)} ${summaryText(toolCall)}`}
         className="flex items-center gap-2 text-[12px] text-text-muted hover:text-text-secondary transition-colors w-full text-left"
@@ -378,6 +381,7 @@ function aggregateFileChanges(toolCalls: ToolCallInfo[]): FileChange[] {
 
 export function ChangesSummary({ toolCalls }: { toolCalls: ToolCallInfo[] }) {
   const [expanded, setExpanded] = useState(false);
+  const haptics = useHaptics();
   const changes = aggregateFileChanges(toolCalls);
   if (changes.length === 0) return null;
 
@@ -390,7 +394,7 @@ export function ChangesSummary({ toolCalls }: { toolCalls: ToolCallInfo[] }) {
   return (
     <div className="py-2">
       <button
-        onClick={() => setExpanded((v) => !v)}
+        onClick={() => { haptics.tap(); setExpanded((v) => !v); }}
         aria-expanded={expanded}
         aria-label={`Changes summary: ${changes.length} files`}
         className="flex items-center gap-2 text-[12px] text-text-muted hover:text-text-secondary transition-colors w-full text-left"
@@ -447,6 +451,7 @@ export function ChangesSummary({ toolCalls }: { toolCalls: ToolCallInfo[] }) {
 
 export function TodoLogCard({ toolCall }: { toolCall: ToolCallInfo }) {
   const [open, setOpen] = useState(true);
+  const haptics = useHaptics();
   const todos = toolCall.todos;
   if (!todos || todos.length === 0) return null;
 
@@ -456,7 +461,7 @@ export function TodoLogCard({ toolCall }: { toolCall: ToolCallInfo }) {
   return (
     <div className="py-2">
       <button
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => { haptics.tap(); setOpen((v) => !v); }}
         aria-expanded={open}
         aria-label={`Todo list: ${done}/${todos.length} done`}
         className="flex items-center gap-2 text-[12px] text-text-muted hover:text-text-secondary transition-colors w-full text-left"
