@@ -46,7 +46,7 @@ async function fetchActiveSessions(): Promise<string[]> {
 
 export { fetchActiveSessions };
 
-export function useChat(initialModel = "auto"): UseChatReturn {
+export function useChat(initialModel = "auto", initialWorkspace?: string): UseChatReturn {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
@@ -56,7 +56,7 @@ export function useChat(initialModel = "auto"): UseChatReturn {
   const [error, setError] = useState<string | null>(null);
 
   const sessionIdRef = useRef<string | null>(null);
-  const workspaceRef = useRef<string | undefined>(undefined);
+  const workspaceRef = useRef<string | undefined>(initialWorkspace);
   const isStreamingRef = useRef(false);
   const sendMessageRef = useRef<
     ((prompt: string, overrides?: { model?: string; mode?: AgentMode }) => Promise<void>) | undefined
@@ -89,7 +89,7 @@ export function useChat(initialModel = "auto"): UseChatReturn {
     watch.stopWatching();
     watch.resetState();
     setSessionId(null);
-    workspaceRef.current = undefined;
+    workspaceRef.current = initialWorkspace;
     setModel(null);
     setError(null);
     setIsStreaming(false);

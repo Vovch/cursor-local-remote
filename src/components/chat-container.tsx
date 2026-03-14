@@ -59,7 +59,7 @@ export function ChatContainer({
     forceSendQueued,
     editQueued,
     deleteQueued,
-  } = useChat(defaultModel);
+  } = useChat(defaultModel, initialWorkspace);
 
   const haptics = useHaptics();
   const sound = useSound();
