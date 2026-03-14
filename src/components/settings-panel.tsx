@@ -58,7 +58,7 @@ export function SettingsPanel({ open, onClose, onDefaultModelChange }: SettingsP
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    setLoading(true); // eslint-disable-line react-hooks/set-state-in-effect -- loading state for fetch
+    setLoading(true); // eslint-disable-line react-hooks/set-state-in-effect
     Promise.all([
       apiFetch("/api/settings").then((r) => r.json()),
       apiFetch("/api/models").then((r) => r.json()),

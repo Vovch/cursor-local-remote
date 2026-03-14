@@ -164,10 +164,8 @@ export function SessionSidebar({
   useEffect(() => {
     const stored = localStorage.getItem(PROJECT_STORAGE_KEY);
     const localStars = loadStarredLocal();
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- hydration: client-only localStorage read
-    setSelectedProject(stored);
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- hydration: client-only localStorage read
-    setStarred(localStars);
+    setSelectedProject(stored); // eslint-disable-line react-hooks/set-state-in-effect
+    setStarred(localStars); // eslint-disable-line react-hooks/set-state-in-effect
 
     apiFetch("/api/settings")
       .then((r) => r.json())

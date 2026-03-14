@@ -306,7 +306,7 @@ export function ChatContainer({
         >
           <span>
             {notification.pending.type === "error" ? "Agent errored" : "Agent finished"}
-            {notification.pending.elapsed != null && notification.pending.elapsed > 0 && (
+            {notification.pending.elapsed !== null && notification.pending.elapsed !== undefined && notification.pending.elapsed > 0 && (
               <span className="opacity-60 ml-1">
                 ({notification.pending.elapsed >= 60
                   ? `${Math.floor(notification.pending.elapsed / 60)}m ${notification.pending.elapsed % 60}s`
