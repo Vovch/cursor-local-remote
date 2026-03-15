@@ -348,6 +348,7 @@ const nextArgs = isBuilt
 
 const child = spawn(nextBin, nextArgs, {
   cwd: projectRoot,
+  shell: true,
   stdio: ["inherit", "pipe", "pipe"],
   env: {
     ...process.env,

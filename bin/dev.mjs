@@ -89,6 +89,7 @@ if (networkUrl) {
 
 const child = spawn(nextBin, args, {
   cwd: projectRoot,
+  shell: true,
   stdio: "inherit",
   env: { ...process.env, PORT: String(port), AUTH_TOKEN: authToken },
 });
