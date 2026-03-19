@@ -5,6 +5,7 @@ import type { ChatMessage, AgentMode } from "@/lib/types";
 import { apiFetch } from "@/lib/api-fetch";
 import { uuid } from "@/lib/uuid";
 import { STREAMING_HEALTH_CHECK_MS } from "@/lib/constants";
+import { vlog } from "@/lib/verbose";
 import { useSessionWatch } from "./use-session-watch";
 import { useMessageQueue } from "./use-message-queue";
 
@@ -110,6 +111,9 @@ export function useChat(initialModel = "auto", initialWorkspace?: string): UseCh
 
   const loadSession = useCallback(
     async (id: string, workspace?: string) => {
+      const t0 = Date.now();
+      vlog("chat", "loadSession start", { id, workspace });
+
       watch.stopWatching();
       watch.resetState();
       setIsLoadingHistory(true);
@@ -118,17 +122,26 @@ export function useChat(initialModel = "auto", initialWorkspace?: string): UseCh
       workspaceRef.current = workspace;
 
       try {
+        vlog("chat", "loadSession: refreshFromHistory", { id, workspace });
         await watch.refreshFromHistory(id, workspace);
+        vlog("chat", "loadSession: refreshFromHistory done", { id, ms: Date.now() - t0 });
+
+        vlog("chat", "loadSession: startWatching", { id, workspace });
         watch.startWatching(id, workspace);
 
+        vlog("chat", "loadSession: checking active sessions");
         const active = await fetchActiveSessions();
-        if (active.includes(id)) {
+        const isSessionActive = active.includes(id);
+        vlog("chat", "loadSession: active check", { id, isSessionActive, activeSessions: active.length });
+        if (isSessionActive) {
           setIsStreaming(true);
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Failed to load session";
+        vlog("chat", "loadSession: error", { id, error: msg, ms: Date.now() - t0 });
         setError(msg);
       } finally {
+        vlog("chat", "loadSession: done", { id, ms: Date.now() - t0 });
         setIsLoadingHistory(false);
       }
     },

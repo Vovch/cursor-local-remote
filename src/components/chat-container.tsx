@@ -6,6 +6,7 @@ import { useHaptics } from "@/hooks/use-haptics";
 import { useSound } from "@/hooks/use-sound";
 import { useNotification } from "@/hooks/use-notification";
 import { apiFetch } from "@/lib/api-fetch";
+import { vlog } from "@/lib/verbose";
 import type { StoredSession } from "@/lib/types";
 import { MessageList } from "./message-list";
 import { ChatInput } from "./chat-input";
@@ -82,6 +83,7 @@ export function ChatContainer({
   useEffect(() => {
     if (initialSessionId && !loadedInitialRef.current) {
       loadedInitialRef.current = true;
+      vlog("container", "loading initial session", { initialSessionId, initialWorkspace });
       loadSession(initialSessionId, initialWorkspace);
     }
   }, [initialSessionId, initialWorkspace, loadSession]);

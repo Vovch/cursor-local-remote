@@ -9,6 +9,7 @@ import { getWorkspace } from "@/lib/workspace";
 import { sessionIdParam } from "@/lib/validation";
 import { isActive, onProcessExit, getLiveEvents, onLiveUpdate } from "@/lib/process-registry";
 import { badRequest, notFound } from "@/lib/errors";
+import { vlog } from "@/lib/verbose";
 import {
   SSE_DEBOUNCE_MS,
   SSE_KEEPALIVE_MS,
@@ -27,13 +28,20 @@ export async function GET(req: Request) {
   const rawId = url.searchParams.get("id");
 
   const result = sessionIdParam.safeParse(rawId);
-  if (!result.success) return badRequest("invalid or missing session id");
+  if (!result.success) {
+    vlog("watch", "invalid session id", rawId);
+    return badRequest("invalid or missing session id");
+  }
   const sessionId = result.data;
 
   const workspace = url.searchParams.get("workspace") || getWorkspace();
   let jsonlPath = await resolveJsonlPath(workspace, sessionId);
+  const active = isActive(sessionId);
 
-  if (!jsonlPath && !isActive(sessionId)) {
+  vlog("watch", "SSE connect", { sessionId, workspace, jsonlPath: jsonlPath ?? "null", isActive: active });
+
+  if (!jsonlPath && !active) {
+    vlog("watch", "session not found — no jsonl and not active", sessionId);
     return notFound("session not found");
   }
 
@@ -52,17 +60,19 @@ export async function GET(req: Request) {
     pushUpdate: () => Promise<void>,
   ) {
     try {
+      vlog("watch", "starting file watcher", path);
       watcher = watch(path, () => {
         if (cancelled) return;
         if (debounceTimer) clearTimeout(debounceTimer);
         debounceTimer = setTimeout(() => void pushUpdate(), SSE_DEBOUNCE_MS);
       });
-      watcher.on("error", () => {
+      watcher.on("error", (err) => {
+        vlog("watch", "file watcher error", sessionId, String(err));
         cleanup();
         try { controller.close(); } catch { /* already closed */ }
       });
-    } catch {
-      // watcher setup failed — rely on process exit
+    } catch (err) {
+      vlog("watch", "file watcher setup failed", sessionId, String(err));
     }
   }
 
@@ -72,24 +82,30 @@ export async function GET(req: Request) {
         if (cancelled || !jsonlPath) return;
         try {
           const modifiedAt = await getSessionModifiedAt(workspace, sessionId);
-          if (modifiedAt <= lastSentModified) return;
+          if (modifiedAt <= lastSentModified) {
+            vlog("watch", "skipping update — not modified", { sessionId, modifiedAt, lastSentModified });
+            return;
+          }
 
           const { messages, toolCalls } = await readSessionMessages(workspace, sessionId);
           lastSentModified = modifiedAt;
+          vlog("watch", "pushing file update", { sessionId, messages: messages.length, toolCalls: toolCalls.length, modifiedAt });
           controller.enqueue(sseMessage("update", { messages, toolCalls, modifiedAt, isActive: isActive(sessionId) }));
-        } catch {
-          // file read error — skip
+        } catch (err) {
+          vlog("watch", "pushFileUpdate error", sessionId, String(err));
         }
       };
 
       if (jsonlPath) {
         const { messages, toolCalls, modifiedAt: initialModified } = await readSessionMessages(workspace, sessionId);
         lastSentModified = initialModified;
+        vlog("watch", "sending connected (file)", { sessionId, messages: messages.length, toolCalls: toolCalls.length, modifiedAt: initialModified, isActive: isActive(sessionId) });
         controller.enqueue(sseMessage("connected", { messages, toolCalls, modifiedAt: initialModified, isActive: isActive(sessionId) }));
         startFileWatcher(jsonlPath, controller, pushFileUpdate);
       } else {
         const events = getLiveEvents(sessionId);
         const { messages, toolCalls } = parseLiveEvents(events, sessionId);
+        vlog("watch", "sending connected (live)", { sessionId, liveEvents: events.length, messages: messages.length, toolCalls: toolCalls.length });
         controller.enqueue(sseMessage("connected", { messages, toolCalls, modifiedAt: Date.now(), isActive: true }));
 
         let liveDebounce: ReturnType<typeof setTimeout> | null = null;
@@ -100,6 +116,7 @@ export async function GET(req: Request) {
             if (cancelled) return;
             const latest = getLiveEvents(sessionId);
             const parsed = parseLiveEvents(latest, sessionId);
+            vlog("watch", "pushing live update", { sessionId, messages: parsed.messages.length, toolCalls: parsed.toolCalls.length });
             controller.enqueue(sseMessage("update", { messages: parsed.messages, toolCalls: parsed.toolCalls, modifiedAt: Date.now(), isActive: isActive(sessionId) }));
           }, SSE_DEBOUNCE_MS);
         });
@@ -108,6 +125,7 @@ export async function GET(req: Request) {
           if (cancelled) return;
           const path = await resolveJsonlPath(workspace, sessionId);
           if (!path) return;
+          vlog("watch", "jsonl file appeared during poll, switching to file watcher", { sessionId, path });
           jsonlPath = path;
           if (filePollTimer) { clearInterval(filePollTimer); filePollTimer = null; }
           if (unsubLive) { unsubLive(); unsubLive = null; }
@@ -118,12 +136,15 @@ export async function GET(req: Request) {
 
       unsubExit = onProcessExit(sessionId, async () => {
         if (cancelled) return;
+        vlog("watch", "process exit detected", sessionId);
         await new Promise((r) => setTimeout(r, PROCESS_EXIT_SETTLE_MS));
         try {
           const { messages, toolCalls, modifiedAt } = await readSessionMessages(workspace, sessionId);
           if (modifiedAt > lastSentModified) lastSentModified = modifiedAt;
+          vlog("watch", "sending final update after exit", { sessionId, messages: messages.length, toolCalls: toolCalls.length, modifiedAt });
           controller.enqueue(sseMessage("update", { messages, toolCalls, modifiedAt, isActive: false }));
-        } catch {
+        } catch (err) {
+          vlog("watch", "exit read failed, falling back to live events", sessionId, String(err));
           const events = getLiveEvents(sessionId);
           const parsed = parseLiveEvents(events, sessionId);
           try {
@@ -142,6 +163,7 @@ export async function GET(req: Request) {
       }, SSE_KEEPALIVE_MS);
     },
     cancel() {
+      vlog("watch", "SSE stream cancelled", sessionId);
       cleanup();
     },
   });

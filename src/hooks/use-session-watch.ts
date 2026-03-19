@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import type { ChatMessage, ToolCallInfo } from "@/lib/types";
 import { apiFetch } from "@/lib/api-fetch";
+import { vlog } from "@/lib/verbose";
 
 export interface SessionWatchState {
   messages: ChatMessage[];
@@ -33,6 +34,7 @@ export function useSessionWatch(options: UseSessionWatchOptions = {}) {
 
   const stopWatching = useCallback(() => {
     if (eventSourceRef.current) {
+      vlog("watch-client", "stopWatching: closing EventSource");
       eventSourceRef.current.close();
       eventSourceRef.current = null;
     }
@@ -51,6 +53,7 @@ export function useSessionWatch(options: UseSessionWatchOptions = {}) {
           !incomingIds.has(m.id) &&
           !incomingUserTexts.has(m.content.trim()),
       );
+      vlog("watch-client", "mergeMessages", { incoming: incoming.length, prev: prev.length, optimistic: optimistic.length });
       if (optimistic.length === 0) return incoming;
       return [...incoming, ...optimistic];
     });
@@ -70,6 +73,7 @@ export function useSessionWatch(options: UseSessionWatchOptions = {}) {
 
       let url = `/api/sessions/watch?id=${encodeURIComponent(id)}`;
       if (workspace) url += `&workspace=${encodeURIComponent(workspace)}`;
+      vlog("watch-client", "startWatching: opening EventSource", { id, url });
       const es = new EventSource(url);
       eventSourceRef.current = es;
 
@@ -77,6 +81,12 @@ export function useSessionWatch(options: UseSessionWatchOptions = {}) {
         setIsWatching(true);
         try {
           const data = JSON.parse(e.data);
+          vlog("watch-client", "connected event", {
+            id, isActive: data.isActive,
+            messages: data.messages?.length ?? 0,
+            toolCalls: data.toolCalls?.length ?? 0,
+            modifiedAt: data.modifiedAt,
+          });
           if (data.isActive === true) {
             setIsActive(true);
             onStreamStartRef.current?.();
@@ -87,14 +97,21 @@ export function useSessionWatch(options: UseSessionWatchOptions = {}) {
           if (data.modifiedAt) lastModifiedRef.current = data.modifiedAt;
           if (data.messages?.length > 0) mergeMessages(data.messages);
           if (data.toolCalls?.length > 0) setToolCalls(data.toolCalls);
-        } catch {
+        } catch (err) {
           console.error("[watch] Failed to parse connected event");
+          vlog("watch-client", "connected parse error", String(err));
         }
       });
 
       es.addEventListener("update", (e) => {
         try {
           const data = JSON.parse(e.data);
+          vlog("watch-client", "update event", {
+            id, isActive: data.isActive,
+            messages: data.messages?.length ?? 0,
+            toolCalls: data.toolCalls?.length ?? 0,
+            modifiedAt: data.modifiedAt,
+          });
           applyUpdate(data);
 
           if (data.isActive === false) {
@@ -103,12 +120,14 @@ export function useSessionWatch(options: UseSessionWatchOptions = {}) {
           } else if (data.isActive === true) {
             setIsActive(true);
           }
-        } catch {
+        } catch (err) {
           console.error("[watch] Failed to parse update event");
+          vlog("watch-client", "update parse error", String(err));
         }
       });
 
-      es.addEventListener("error", () => {
+      es.addEventListener("error", (e) => {
+        vlog("watch-client", "EventSource error", { id, readyState: es.readyState, event: String(e) });
         if (es.readyState === EventSource.CLOSED) {
           setIsActive(false);
           onStreamEndRef.current?.();
@@ -119,21 +138,33 @@ export function useSessionWatch(options: UseSessionWatchOptions = {}) {
   );
 
   const refreshFromHistory = useCallback(async (sessionId: string, workspace?: string) => {
+    const t0 = Date.now();
     try {
       let url = `/api/sessions/history?id=${encodeURIComponent(sessionId)}`;
       if (workspace) url += `&workspace=${encodeURIComponent(workspace)}`;
+      vlog("watch-client", "refreshFromHistory: fetch", { sessionId, url });
       const res = await apiFetch(url);
+      vlog("watch-client", "refreshFromHistory: response", { sessionId, status: res.status, ok: res.ok });
       if (!res.ok) return;
       const data = await res.json();
+      vlog("watch-client", "refreshFromHistory: data", {
+        sessionId,
+        messages: data.messages?.length ?? 0,
+        toolCalls: data.toolCalls?.length ?? 0,
+        modifiedAt: data.modifiedAt,
+        ms: Date.now() - t0,
+      });
       if (data.messages?.length > 0) mergeMessages(data.messages);
       if (data.toolCalls?.length > 0) setToolCalls(data.toolCalls);
       if (data.modifiedAt) lastModifiedRef.current = data.modifiedAt;
-    } catch {
+    } catch (err) {
       console.error("[watch] Failed to refresh from history");
+      vlog("watch-client", "refreshFromHistory: error", { sessionId, error: String(err), ms: Date.now() - t0 });
     }
   }, [mergeMessages]);
 
   const resetState = useCallback(() => {
+    vlog("watch-client", "resetState");
     setMessages([]);
     setToolCalls([]);
     setIsActive(false);

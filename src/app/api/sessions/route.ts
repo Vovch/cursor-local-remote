@@ -3,6 +3,7 @@ import { readCursorSessions } from "@/lib/transcript-reader";
 import { getWorkspace } from "@/lib/workspace";
 import { deleteSessionSchema, parseBody } from "@/lib/validation";
 import { badRequest, parseJsonBody, serverError } from "@/lib/errors";
+import { vlog } from "@/lib/verbose";
 import type { StoredSession } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -29,30 +30,37 @@ function mergeSessions(ours: StoredSession[], cursor: StoredSession[]): StoredSe
 }
 
 export async function GET(req: Request) {
+  const t0 = Date.now();
   const url = new URL(req.url);
   const all = url.searchParams.get("all") === "true";
   const workspaceParam = url.searchParams.get("workspace");
   const archived = url.searchParams.get("archived") === "true";
   const workspace = workspaceParam || getWorkspace();
 
+  vlog("sessions", "GET", { all, archived, workspace });
+
   if (all) {
     const ours = await listSessions(undefined, archived);
+    vlog("sessions", "all mode", { count: ours.length, ms: Date.now() - t0 });
     return Response.json({ sessions: ours, workspace });
   }
 
   const cursorSessions = await readCursorSessions(workspace);
   const ourSessions = await listSessions(workspace, archived);
+  vlog("sessions", "fetched", { cursorSessions: cursorSessions.length, ourSessions: ourSessions.length });
 
   if (archived) {
     const archivedIds = await getArchivedSessionIds();
     const archivedCursorSessions = cursorSessions.filter((s) => archivedIds.has(s.id));
     const merged = mergeSessions(ourSessions, archivedCursorSessions);
+    vlog("sessions", "archived result", { merged: merged.length, ms: Date.now() - t0 });
     return Response.json({ sessions: merged, workspace });
   }
 
   const archivedIds = await getArchivedSessionIds();
   const activeCursorSessions = cursorSessions.filter((s) => !archivedIds.has(s.id));
   const merged = mergeSessions(ourSessions, activeCursorSessions);
+  vlog("sessions", "result", { merged: merged.length, archivedIds: archivedIds.size, ms: Date.now() - t0 });
 
   return Response.json({ sessions: merged, workspace });
 }

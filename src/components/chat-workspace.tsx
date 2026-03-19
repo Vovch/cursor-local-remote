@@ -4,6 +4,7 @@ import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { useHaptics } from "@/hooks/use-haptics";
 import { fetchActiveSessions } from "@/hooks/use-chat";
 import { apiFetch } from "@/lib/api-fetch";
+import { vlog } from "@/lib/verbose";
 import { ChatContainer } from "./chat-container";
 import { SessionSidebar } from "./session-sidebar";
 import { SettingsPanel } from "./settings-panel";
@@ -138,8 +139,11 @@ export function ChatWorkspace() {
 
   const handleSelectSession = useCallback(
     (sessionId: string, workspace?: string) => {
+      vlog("workspace", "handleSelectSession", { sessionId, workspace, activeId, instanceCount: instances.length });
+
       const existing = instances.find((i) => i.sessionId === sessionId);
       if (existing) {
+        vlog("workspace", "handleSelectSession: found existing instance", { instanceId: existing.id, sessionId });
         setActiveId(existing.id);
         return;
       }
@@ -148,8 +152,10 @@ export function ChatWorkspace() {
       const current = instances.find((i) => i.id === activeId);
 
       if (current && !current.sessionId && !current.isStreaming) {
+        vlog("workspace", "handleSelectSession: replacing empty instance", { replacedId: current.id, newId: inst.id, sessionId });
         setInstances((prev) => prev.map((i) => (i.id === activeId ? inst : i)));
       } else {
+        vlog("workspace", "handleSelectSession: adding new instance", { newId: inst.id, sessionId, currentHasSession: !!current?.sessionId, currentStreaming: current?.isStreaming });
         setInstances((prev) => [...prev, inst]);
       }
       setActiveId(inst.id);

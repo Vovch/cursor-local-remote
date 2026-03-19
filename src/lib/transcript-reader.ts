@@ -3,6 +3,7 @@ import { join, resolve, sep } from "path";
 import { homedir } from "os";
 import { existsSync, statSync } from "fs";
 import type { StoredSession, ChatMessage, ToolCallInfo, TodoItem, ProjectInfo } from "@/lib/types";
+import { vlog } from "@/lib/verbose";
 
 const CURSOR_PROJECTS_DIR = join(homedir(), ".cursor", "projects");
 
@@ -54,8 +55,10 @@ async function findTranscriptsDir(workspace: string): Promise<string | null> {
   const dir = join(CURSOR_PROJECTS_DIR, key, "agent-transcripts");
   try {
     await access(dir);
+    vlog("reader", "transcripts dir found", dir);
     return dir;
   } catch {
+    vlog("reader", "transcripts dir not found", dir, "workspace", workspace, "key", key);
     return null;
   }
 }
@@ -176,23 +179,33 @@ export interface SessionHistoryResult {
 
 export async function resolveJsonlPath(workspace: string, sessionId: string): Promise<string | null> {
   const dir = await findTranscriptsDir(workspace);
-  if (!dir) return null;
+  if (!dir) {
+    vlog("reader", "resolveJsonlPath: no transcripts dir", { workspace, sessionId });
+    return null;
+  }
 
   const resolvedDir = resolve(dir);
   const entryPath = resolve(dir, sessionId);
-  if (!entryPath.startsWith(resolvedDir + "/")) return null;
+  if (!entryPath.startsWith(resolvedDir + "/")) {
+    vlog("reader", "resolveJsonlPath: path traversal blocked", { entryPath, resolvedDir });
+    return null;
+  }
 
   const flatPath = join(dir, sessionId + ".jsonl");
 
   if (await pathExists(entryPath)) {
     const s = await stat(entryPath);
     if (s.isDirectory()) {
-      return findJsonlFile(entryPath, sessionId);
+      const result = await findJsonlFile(entryPath, sessionId);
+      vlog("reader", "resolveJsonlPath: directory entry", { sessionId, found: result ?? "null" });
+      return result;
     }
   }
   if (await pathExists(flatPath)) {
+    vlog("reader", "resolveJsonlPath: flat file", { sessionId, path: flatPath });
     return flatPath;
   }
+  vlog("reader", "resolveJsonlPath: not found", { sessionId, triedDir: entryPath, triedFlat: flatPath });
   return null;
 }
 
@@ -341,27 +354,42 @@ export function parseLiveEvents(
 }
 
 export async function readSessionMessages(workspace: string, sessionId: string): Promise<SessionHistoryResult> {
+  const t0 = Date.now();
   const jsonlPath = await resolveJsonlPath(workspace, sessionId);
-  if (!jsonlPath) return { messages: [], toolCalls: [], modifiedAt: 0 };
+  if (!jsonlPath) {
+    vlog("reader", "readSessionMessages: no jsonl path", { workspace, sessionId });
+    return { messages: [], toolCalls: [], modifiedAt: 0 };
+  }
 
   let modifiedAt = 0;
   try {
     modifiedAt = (await stat(jsonlPath)).mtimeMs;
-  } catch {
+  } catch (err) {
+    vlog("reader", "readSessionMessages: stat failed", { jsonlPath, error: String(err) });
     return { messages: [], toolCalls: [], modifiedAt: 0 };
   }
+
+  const entries = await parseJsonlEntries(jsonlPath);
+  vlog("reader", "readSessionMessages: parsed jsonl", { sessionId, entries: entries.length, jsonlPath });
 
   const messages: ChatMessage[] = [];
   const toolCalls: ToolCallInfo[] = [];
   const counter = { n: 0 };
   const baseTimestamp = modifiedAt - 60_000;
+  let skippedEntries = 0;
 
-  for (const entry of await parseJsonlEntries(jsonlPath)) {
+  for (const entry of entries) {
     const role = entry.role as string;
-    if (role !== "user" && role !== "assistant") continue;
+    if (role !== "user" && role !== "assistant") {
+      skippedEntries++;
+      continue;
+    }
 
     const contentArr = (entry.message as Record<string, unknown> | undefined)?.content;
-    if (!Array.isArray(contentArr)) continue;
+    if (!Array.isArray(contentArr)) {
+      skippedEntries++;
+      continue;
+    }
 
     const textParts: string[] = [];
     for (const part of contentArr) {
@@ -393,6 +421,11 @@ export async function readSessionMessages(workspace: string, sessionId: string):
       toolCalls.push(...extractToolCallsFromContent(contentArr, sessionId, counter, baseTimestamp));
     }
   }
+
+  vlog("reader", "readSessionMessages: done", {
+    sessionId, messages: messages.length, toolCalls: toolCalls.length,
+    skippedEntries, modifiedAt, ms: Date.now() - t0,
+  });
 
   return { messages, toolCalls, modifiedAt };
 }
