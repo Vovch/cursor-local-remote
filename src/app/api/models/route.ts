@@ -4,6 +4,8 @@ import type { ModelInfo } from "@/lib/types";
 import { serverError, safeErrorMessage } from "@/lib/errors";
 import { MODELS_CACHE_TTL_MS, MODELS_FETCH_TIMEOUT_MS } from "@/lib/constants";
 import { getConfig } from "@/lib/session-store";
+import { getAgentChildOptions, getAgentExecutableOrNull } from "@/lib/agent-path";
+import { stripAnsi } from "@/lib/strip-ansi";
 
 const execFileAsync = promisify(execFile);
 
@@ -52,12 +54,30 @@ export async function GET() {
     const trustConfig = trustEnv === "0" ? false : trustEnv === "1" ? true : (await getConfig("trust")) !== "0";
     if (trustConfig) agentArgs.push("--trust");
 
-    const { stdout } = await execFileAsync("agent", agentArgs, {
+    const agentExe = getAgentExecutableOrNull();
+    if (!agentExe) {
+      return Response.json(
+        {
+          error: "Cursor agent CLI not found",
+          hint: 'Set CURSOR_AGENT_PATH to the full path of agent, or install shell commands (Cursor → Command Palette → "Shell Command: Install \'cursor\' command in PATH"). On Windows it is often under %LOCALAPPDATA%\\Programs\\cursor\\resources\\app\\bin\\agent.cmd.',
+        },
+        { status: 503 },
+      );
+    }
+
+    const { stdout } = await execFileAsync(agentExe, agentArgs, {
       encoding: "utf-8",
       timeout: MODELS_FETCH_TIMEOUT_MS,
+      env: {
+        ...process.env,
+        NO_COLOR: "1",
+        FORCE_COLOR: "0",
+        TERM: "dumb",
+      },
+      ...getAgentChildOptions(agentExe),
     });
 
-    const models = parseModels(stdout);
+    const models = parseModels(stripAnsi(stdout));
 
     if (models.length > 0) {
       cachedModels = { models, fetchedAt: Date.now() };

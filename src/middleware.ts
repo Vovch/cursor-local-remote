@@ -129,6 +129,38 @@ function unauthorizedHtml(wrongToken = false): string {
 </html>`;
 }
 
+function escapeHtmlAttr(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+}
+
+/** Same-origin path+search+hash; avoids Set-Cookie-on-redirect quirks on some mobile browsers after QR scans. */
+function tokenAcceptHtml(redirectPath: string): string {
+  const target = JSON.stringify(redirectPath);
+  const metaUrl = escapeHtmlAttr(redirectPath);
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="refresh" content="0;url=${metaUrl}" />
+  <title>Signing in…</title>
+</head>
+<body>
+  <script>location.replace(${target})</script>
+</body>
+</html>`;
+}
+
+function appendSessionCookie(res: NextResponse, token: string): void {
+  res.cookies.set(COOKIE_NAME, token, {
+    httpOnly: true,
+    // Lax works reliably for top-level navigations (e.g. camera app → browser); Strict can drop cookies on some redirect chains.
+    sameSite: "lax",
+    path: "/",
+    maxAge: COOKIE_MAX_AGE,
+  });
+}
+
 export function middleware(req: NextRequest) {
   const token = process.env.AUTH_TOKEN?.toLowerCase();
   if (!token) {
@@ -141,13 +173,12 @@ export function middleware(req: NextRequest) {
   if (queryToken !== null) {
     if (queryToken.toLowerCase() === token) {
       url.searchParams.delete("token");
-      const res = NextResponse.redirect(url);
-      res.cookies.set(COOKIE_NAME, token, {
-        httpOnly: true,
-        sameSite: "strict",
-        path: "/",
-        maxAge: COOKIE_MAX_AGE,
+      const redirectPath = `${url.pathname}${url.search}${url.hash}` || "/";
+      const res = new NextResponse(tokenAcceptHtml(redirectPath), {
+        status: 200,
+        headers: { "Content-Type": "text/html; charset=utf-8" },
       });
+      appendSessionCookie(res, token);
       return res;
     }
 

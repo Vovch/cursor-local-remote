@@ -1,17 +1,23 @@
 import { spawn, execFileSync, type ChildProcess } from "child_process";
 import type { AgentMode } from "@/lib/types";
 import { getConfig } from "@/lib/session-store";
+import { getAgentChildOptions, getAgentExecutable } from "@/lib/agent-path";
 
 let agentChecked = false;
 
 function ensureAgentOnPath(): void {
   if (agentChecked) return;
+  const exe = getAgentExecutable();
   try {
-    execFileSync("agent", ["--version"], { stdio: "ignore", timeout: 5_000 });
+    execFileSync(exe, ["--version"], {
+      stdio: "ignore",
+      timeout: 5_000,
+      ...getAgentChildOptions(exe),
+    });
     agentChecked = true;
   } catch {
     throw new Error(
-      "Could not find the 'agent' CLI. Make sure Cursor is installed and the CLI is on your PATH.",
+      "Could not run the 'agent' CLI. Check CURSOR_AGENT_PATH or reinstall Cursor shell commands.",
     );
   }
 }
@@ -51,9 +57,11 @@ export async function spawnAgent(options: AgentOptions): Promise<ChildProcess> {
     args.push("--mode", options.mode);
   }
 
-  return spawn("agent", args, {
+  const exe = getAgentExecutable();
+  return spawn(exe, args, {
     stdio: ["pipe", "pipe", "pipe"],
     env: { ...process.env },
+    ...getAgentChildOptions(exe),
   });
 }
 
